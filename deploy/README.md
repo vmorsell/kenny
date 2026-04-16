@@ -1,27 +1,33 @@
 # Kenny deployment — Coolify
 
-Kenny runs as a single service on Coolify built from the root `Dockerfile`. Observability runs alongside as five sibling services in the same Coolify project (so they share a network and Kenny is reachable at `kenny:8080`).
+Kenny runs as a single Coolify service built from the root `Dockerfile`. Observability runs alongside as **five sibling services** in the same Coolify project (so they share a network and Kenny is reachable at `kenny:8080`). **Do not deploy the observability stack as a compose unit** — each service must be its own Coolify service so Kenny can be redeployed hourly without bouncing Grafana/Loki/Prometheus.
+
+## Heartbeat
+
+Kenny is forced to rebirth every hour via a **Coolify Scheduled Task** on the `kenny` service itself. No GitHub Actions, no empty commits, no Coolify API token.
+
+- **Cron**: `0 * * * *`
+- **Command**: `kill -TERM 1`
+
+The task runs inside the running container. Signalling PID 1 (tini) forwards SIGTERM to Kenny, which graceful-shutdowns within the 60s `stop_grace_period`. Docker's `restart: unless-stopped` brings a fresh container up from the same image. Anything Kenny hasn't committed to git by then is wiped.
+
+Source rebuilds happen independently: Coolify's auto-deploy-on-push reacts to any commit Kenny (or you) pushes to `main`, building a new image and replacing the running container. So the hourly rebirth restarts the current image; pushes produce a new image.
 
 ## Coolify services
 
 ### `kenny`
 
-- **Build**: root `Dockerfile`. Build args `BUILD_SHA` and `BUILD_TIME` populate the `kenny_build_info` metric labels.
-- **Persistent volume**: `/state` → named volume.
-- **Healthcheck**: `GET /healthz` on port 8080, expecting `200`. Set a generous timeout (5–10s) so SQLite open + boot can complete.
-- **Stop grace period**: `60s` so SIGTERM has room to drain the in-flight `claude -p` (see `internal/claude/runner.go` — `WaitDelay = 45s`).
-- **Scheduled task**: cron `0 * * * *`, command `curl -X POST $COOLIFY_DEPLOY_WEBHOOK`. Triggers the hourly rebuild+redeploy that is Kenny's heartbeat.
-- **Environment variables**:
-  - `STATE_DIR=/state`
-  - `HTTP_ADDR=:8080`
-  - `REPO_DIR=/app`
-  - `DEPLOY_INTERVAL_SECONDS=3600`
-  - `GIT_USER_NAME=Kenny`
-  - `GIT_USER_EMAIL=kenny@<your-domain>`
+- **Build pack**: Docker Compose. Point Coolify at the root `docker-compose.yml` in this repo.
+- **Source**: connect to this repo. Enable auto-deploy-on-push for `main`.
+- **Why Compose instead of Dockerfile**: Coolify's Dockerfile build pack doesn't expose `stop_grace_period`. The compose file sets it to `60s` so SIGTERM has room to drain the in-flight `claude -p` (see `internal/claude/runner.go` — `WaitDelay = 45s`). Healthcheck + restart policy + volume are also defined there and inherited as-is.
+- **Persistent volume**: declared in compose as `kenny-state` → mounted at `/state`. Coolify surfaces the volume in its Persistent Storage UI for backup.
+- **Environment variables** (set these in Coolify's UI; compose substitutes them):
   - `GITHUB_REPO=vmorsell/kenny`
   - `GITHUB_PAT=<fine-grained PAT, contents:write on this repo only>`
-  - `COOLIFY_DEPLOY_WEBHOOK=<this service's deploy webhook URL>`
-  - Whatever env var the `claude` CLI uses for Max OAuth.
+  - `GIT_USER_NAME=Kenny` (optional)
+  - `GIT_USER_EMAIL=kenny@<your-domain>` (optional)
+  - `CLAUDE_CODE_OAUTH_TOKEN=<Claude Max OAuth>` (verify the exact var name with `claude --help`)
+  - `BUILD_SHA=<commit sha>` and `BUILD_TIME=<iso8601>` optional — Coolify often injects the commit SHA automatically into the build context.
 
 ### `loki`
 
@@ -72,6 +78,6 @@ Then build and run Kenny pointing at the same network so `kenny:8080` resolves. 
 1. Create the Coolify project "kenny".
 2. Add all six services as listed above.
 3. Configure Kenny's environment variables. The fine-grained GitHub PAT must be scoped to `vmorsell/kenny` with `contents:write` only.
-4. Trigger the first deploy manually — Kenny will journal "life #1 booted" and run `claude -p` once.
-5. Set up the cron scheduled task on the Kenny service so the hourly heartbeat kicks in.
+4. Trigger Kenny's first deploy manually — Kenny will journal "life #1 booted" and run `claude -p` once.
+5. Add a Coolify Scheduled Task on the `kenny` service: cron `0 * * * *`, command `kill -TERM 1`. This is the hourly rebirth.
 6. Open Grafana, log in, confirm the "Kenny's Life" dashboard is populated.

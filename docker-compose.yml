@@ -1,0 +1,42 @@
+# Kenny's Coolify service — single-service compose so we can set
+# stop_grace_period, which the Dockerfile build pack doesn't expose.
+#
+# The observability stack (Loki, Prometheus, Grafana, Alloy,
+# docker-socket-proxy) is intentionally NOT here. Those are deployed as
+# separate Coolify services so the hourly rebirth of kenny doesn't
+# bounce them.
+
+services:
+  kenny:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_SHA: ${BUILD_SHA:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    stop_grace_period: 60s
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - kenny-state:/state
+    environment:
+      STATE_DIR: /state
+      HTTP_ADDR: ":8080"
+      REPO_DIR: /app
+      DEPLOY_INTERVAL_SECONDS: "3600"
+      GIT_USER_NAME: ${GIT_USER_NAME:-Kenny}
+      GIT_USER_EMAIL: ${GIT_USER_EMAIL:-kenny@local}
+      GITHUB_REPO: ${GITHUB_REPO}
+      GITHUB_PAT: ${GITHUB_PAT}
+      # Claude Max OAuth env var (set whichever name the CLI expects).
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  kenny-state:
