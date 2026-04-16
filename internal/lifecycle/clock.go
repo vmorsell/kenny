@@ -44,9 +44,9 @@ func NewAt(boot time.Time) *Clock {
 // SetNow overrides the clock's time source. Tests only.
 func (c *Clock) SetNow(f func() time.Time) { c.now = f }
 
-func (c *Clock) BootAt() time.Time     { return c.bootAt }
+func (c *Clock) BootAt() time.Time       { return c.bootAt }
 func (c *Clock) Interval() time.Duration { return c.interval }
-func (c *Clock) Aligned() bool         { return c.aligned }
+func (c *Clock) Aligned() bool           { return c.aligned }
 
 // ExpectedDeathAt returns the moment Kenny expects to be killed —
 // a fixed point anchored at boot. In aligned mode this is the first

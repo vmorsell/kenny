@@ -39,6 +39,7 @@ func New(addr string, reg *prometheus.Registry, store *state.Store) *Server {
 
 	mux.HandleFunc("/healthz", s.healthz)
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	mux.HandleFunc("POST /api/message", s.postMessage)
 
 	return s
 }
@@ -84,6 +85,23 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeHealth(w, http.StatusOK, "")
+}
+
+func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Content == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := s.store.AddMessage(ctx, body.Content); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func writeHealth(w http.ResponseWriter, status int, reason string) {

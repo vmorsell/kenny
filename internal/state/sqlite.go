@@ -94,6 +94,12 @@ func (s *Store) migrate(ctx context.Context) error {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS messages (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			received_at DATETIME NOT NULL,
+			content     TEXT NOT NULL,
+			consumed_at DATETIME
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -312,4 +318,48 @@ func (s *Store) ListSecretKeys(ctx context.Context) ([]string, error) {
 		out = append(out, k)
 	}
 	return out, rows.Err()
+}
+
+// ------------------- Messages -------------------
+
+type Message struct {
+	ID         int64
+	ReceivedAt time.Time
+	Content    string
+}
+
+// AddMessage queues a message from the user for Kenny to see on next boot.
+func (s *Store) AddMessage(ctx context.Context, content string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO messages (received_at, content) VALUES (?, ?)`,
+		time.Now().UTC(), content)
+	return err
+}
+
+// PendingMessages returns messages not yet consumed by a boot prompt.
+func (s *Store) PendingMessages(ctx context.Context) ([]Message, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, received_at, content FROM messages WHERE consumed_at IS NULL ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.ReceivedAt, &m.Content); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// ConsumeMessages marks all pending messages as consumed.
+func (s *Store) ConsumeMessages(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE messages SET consumed_at = ? WHERE consumed_at IS NULL`,
+		time.Now().UTC())
+	return err
 }

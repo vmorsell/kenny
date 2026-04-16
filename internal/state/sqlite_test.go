@@ -171,3 +171,37 @@ func TestPing(t *testing.T) {
 		t.Fatalf("Ping: %v", err)
 	}
 }
+
+func TestMessagesLifecycle(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	pending, err := s.PendingMessages(ctx)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("PendingMessages empty: got %d err=%v", len(pending), err)
+	}
+
+	if err := s.AddMessage(ctx, "hello from user"); err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	if err := s.AddMessage(ctx, "second message"); err != nil {
+		t.Fatalf("AddMessage 2: %v", err)
+	}
+
+	pending, err = s.PendingMessages(ctx)
+	if err != nil || len(pending) != 2 {
+		t.Fatalf("PendingMessages got %d err=%v, want 2", len(pending), err)
+	}
+	if pending[0].Content != "hello from user" || pending[1].Content != "second message" {
+		t.Fatalf("unexpected content: %+v", pending)
+	}
+
+	if err := s.ConsumeMessages(ctx); err != nil {
+		t.Fatalf("ConsumeMessages: %v", err)
+	}
+
+	pending, err = s.PendingMessages(ctx)
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("PendingMessages after consume: got %d err=%v, want 0", len(pending), err)
+	}
+}

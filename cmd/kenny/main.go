@@ -156,6 +156,10 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 	if err != nil {
 		return "", err
 	}
+	msgs, err := store.PendingMessages(ctx)
+	if err != nil {
+		return "", err
+	}
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "You are Kenny, life #%d.\n", lifeID)
@@ -165,6 +169,15 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 	fmt.Fprintf(&sb, "Repo root: %s\n\n", repoDir)
 
 	sb.WriteString("Read CLAUDE.md for your purpose, method, and the full shape of your situation.\n\n")
+
+	if len(msgs) > 0 {
+		sb.WriteString("Messages from your user (queued since last life):\n")
+		for _, m := range msgs {
+			fmt.Fprintf(&sb, "- [%s] %s\n", m.ReceivedAt.Format(time.RFC3339), truncate(m.Content, 500))
+		}
+		sb.WriteString("\n")
+		_ = store.ConsumeMessages(ctx)
+	}
 
 	if len(recent) > 0 {
 		sb.WriteString("Recent journal entries (most recent first):\n")
