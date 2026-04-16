@@ -1,0 +1,44 @@
+// Alloy config for Kenny's observability stack.
+//
+// Reads Docker container logs via docker-socket-proxy (never the raw
+// /var/run/docker.sock), filters to containers whose name contains "kenny",
+// and forwards them to Loki.
+
+discovery.docker "kenny" {
+  host             = "tcp://docker-socket-proxy:2375"
+  refresh_interval = "15s"
+
+  filter {
+    name   = "name"
+    values = ["kenny"]
+  }
+}
+
+discovery.relabel "kenny" {
+  targets = discovery.docker.kenny.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    target_label  = "container"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_id"]
+    target_label  = "container_id"
+  }
+}
+
+loki.source.docker "kenny" {
+  host       = "tcp://docker-socket-proxy:2375"
+  targets    = discovery.relabel.kenny.output
+  forward_to = [loki.write.default.receiver]
+
+  labels = {
+    job = "kenny",
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

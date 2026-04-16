@@ -1,0 +1,17 @@
+# Keep .git in the build context — Kenny needs a real repo for commits + pushes.
+# Exclude local dev cruft only.
+
+.DS_Store
+.env
+.env.local
+.commit-msg
+/state
+/tmp
+/bin
+*.test
+*.out
+coverage.*
+
+# Editor / IDE
+.idea
+.vscode
