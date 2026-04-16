@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         git \
+        gosu \
         tini \
     && rm -rf /var/lib/apt/lists/*
 
@@ -44,7 +45,7 @@ ENV PATH="/usr/local/go/bin:/go/bin:${PATH}"
 ENV GOPATH=/go
 ENV GOCACHE=/go/cache
 
-# Install Claude Code CLI globally.
+# Install Claude Code CLI globally (root-owned, world-readable).
 RUN npm install -g @anthropic-ai/claude-code \
     && npm cache clean --force
 
@@ -55,6 +56,12 @@ WORKDIR /app
 COPY --from=builder /src /app
 COPY --from=builder /out/kenny /usr/local/bin/kenny
 
+# Everything Kenny (and Claude Code running inside Kenny) writes to is
+# owned by the node user (uid 1000) that this image ships with. /state
+# is a volume mount so its ownership is re-applied at entrypoint.
+RUN mkdir -p "$GOPATH" "$GOCACHE" /state \
+    && chown -R node:node /app "$GOPATH" /state
+
 VOLUME ["/state"]
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
@@ -62,5 +69,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 8080
 
+# Entrypoint runs briefly as root to fix /state ownership on each boot
+# (a volume mount masks the Dockerfile chown), then gosu-drops to the
+# node user. Claude Code refuses --dangerously-skip-permissions as root.
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 CMD ["kenny"]
