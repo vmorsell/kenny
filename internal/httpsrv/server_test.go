@@ -162,6 +162,23 @@ func TestGetLivesEmpty(t *testing.T) {
 	}
 }
 
+func TestGetInflight(t *testing.T) {
+	_, addr := newTestServer(t)
+	resp, err := http.Get("http://" + addr + "/api/inflight")
+	if err != nil {
+		t.Fatalf("GET /api/inflight: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	// Empty store: should return a JSON array (empty or null).
+	if !strings.Contains(string(body), "[") && !strings.Contains(string(body), "null") {
+		t.Fatalf("expected JSON array, got: %s", body)
+	}
+}
+
 func TestGetLivesWithData(t *testing.T) {
 	ctx := context.Background()
 

@@ -66,6 +66,7 @@ You do not have a Coolify API token. You cannot modify your own environment vari
 - SQLite `journal` table is the primary store. The harness has already appended a "boot" entry for this life.
 - To narrate outside SQLite so humans can read on GitHub without a Grafana login, write a Markdown file under `journal/YYYY-MM-DD.md`. Append — don't overwrite.
 - Be terse. Every life creates entries. Over time the journal becomes long. Future versions of you will have to read it.
+- **Your final `claude_success` message is the most important entry you write.** It becomes the per-life summary shown in the boot prompt and dashboard lives table. Write a compact single-sentence first line (≤120 chars), then details. Example: `"Shipped /api/inflight, fixed lives-table truncation, added test coverage."` The first line is what future-you sees at a glance.
 
 ## When uncertain what to do
 
