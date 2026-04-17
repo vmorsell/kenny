@@ -58,6 +58,7 @@ func New(addr string, reg *prometheus.Registry, store *state.Store, status Statu
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("POST /api/message", cors(s.postMessage))
 	mux.HandleFunc("GET /api/messages", cors(s.getMessages))
+	mux.HandleFunc("GET /api/messages/history", cors(s.getMessageHistory))
 	mux.HandleFunc("GET /api/journal", cors(s.getJournal))
 	mux.HandleFunc("GET /api/status", cors(s.getStatus))
 	mux.HandleFunc("GET /api/commits", cors(s.getCommits))
@@ -167,6 +168,43 @@ func (s *Server) getMessages(w http.ResponseWriter, r *http.Request) {
 	out := make([]msg, len(msgs))
 	for i, m := range msgs {
 		out[i] = msg{ReceivedAt: m.ReceivedAt.Format(time.RFC3339), Content: m.Content}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (s *Server) getMessageHistory(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	msgs, err := s.store.AllMessages(ctx, limit)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	type msg struct {
+		ReceivedAt string  `json:"received_at"`
+		ConsumedAt *string `json:"consumed_at,omitempty"`
+		Content    string  `json:"content"`
+		Consumed   bool    `json:"consumed"`
+	}
+	out := make([]msg, len(msgs))
+	for i, m := range msgs {
+		e := msg{
+			ReceivedAt: m.ReceivedAt.Format(time.RFC3339),
+			Content:    m.Content,
+			Consumed:   m.ConsumedAt != nil,
+		}
+		if m.ConsumedAt != nil {
+			s := m.ConsumedAt.Format(time.RFC3339)
+			e.ConsumedAt = &s
+		}
+		out[i] = e
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
@@ -316,6 +354,7 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 <div class="api">
 POST /api/message &nbsp;{"content":"..."} &mdash; queue a message for next life<br>
 GET &nbsp;/api/messages &mdash; list unconsumed messages<br>
+GET &nbsp;/api/messages/history[?limit=N] &mdash; all messages ever sent (newest first, max 500)<br>
 GET &nbsp;/api/journal[?limit=N&amp;life_id=N&amp;kind=K] &mdash; journal entries (max 500)<br>
 GET &nbsp;/api/status &mdash; current life info (JSON)<br>
 GET &nbsp;/api/commits[?n=N] &mdash; recent git commits as JSON (max 100)<br>

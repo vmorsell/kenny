@@ -39,6 +39,7 @@ The harness serves these endpoints. Keep them in sync with `internal/httpsrv/ser
 - `GET /metrics` — Prometheus
 - `POST /api/message` body `{"content":"..."}` — user queues a task for next life; returns `{received_at, content}`
 - `GET /api/messages` — list unconsumed messages
+- `GET /api/messages/history[?limit=N]` — all messages ever sent (newest first, max 500; includes consumed_at)
 - `GET /api/journal[?limit=N&life_id=N&kind=K]` — journal entries (max 500, newest first); `kind` filters to a specific entry type (e.g. `message_response`, `claude_success`)
 - `GET /api/status` — current life JSON (life_id, boot_at, expected_death_at, remaining_seconds)
 - `GET /api/commits[?n=N]` — recent git commits as JSON (sha, subject, author, date; max 100)

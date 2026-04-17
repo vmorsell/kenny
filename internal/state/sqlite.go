@@ -411,6 +411,7 @@ type Message struct {
 	ID         int64
 	ReceivedAt time.Time
 	Content    string
+	ConsumedAt *time.Time // nil if not yet consumed
 }
 
 // AddMessage queues a message from the user for Kenny to see on next boot.
@@ -440,6 +441,31 @@ func (s *Store) PendingMessages(ctx context.Context) ([]Message, error) {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.ReceivedAt, &m.Content); err != nil {
 			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// AllMessages returns all messages newest first, including consumed ones.
+func (s *Store) AllMessages(ctx context.Context, limit int) ([]Message, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, received_at, content, consumed_at FROM messages ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Message
+	for rows.Next() {
+		var m Message
+		var consumed sql.NullTime
+		if err := rows.Scan(&m.ID, &m.ReceivedAt, &m.Content, &consumed); err != nil {
+			return nil, err
+		}
+		if consumed.Valid {
+			t := consumed.Time
+			m.ConsumedAt = &t
 		}
 		out = append(out, m)
 	}
