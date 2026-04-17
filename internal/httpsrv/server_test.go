@@ -185,6 +185,14 @@ func TestNoteRoundTrip(t *testing.T) {
 	if delR.StatusCode != http.StatusNoContent {
 		t.Fatalf("DELETE /api/note: status %d", delR.StatusCode)
 	}
+
+	// Verify gone.
+	r3, _ := http.Get("http://" + addr + "/api/note")
+	body3, _ := io.ReadAll(r3.Body)
+	r3.Body.Close()
+	if strings.Contains(string(body3), `"set":true`) {
+		t.Fatalf("note still set after delete: %s", body3)
+	}
 }
 
 func TestGetLivesEmpty(t *testing.T) {

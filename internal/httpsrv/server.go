@@ -579,8 +579,9 @@ func (s *Server) getNote(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	// Treat empty string as "not set" — delete clears by setting to "".
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"content": v, "set": ok})
+	_ = json.NewEncoder(w).Encode(map[string]any{"content": v, "set": ok && v != ""})
 }
 
 func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
