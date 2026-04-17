@@ -61,6 +61,7 @@ func New(addr string, reg *prometheus.Registry, store *state.Store, status Statu
 	mux.HandleFunc("GET /api/journal", cors(s.getJournal))
 	mux.HandleFunc("GET /api/status", cors(s.getStatus))
 	mux.HandleFunc("GET /api/commits", cors(s.getCommits))
+	mux.HandleFunc("GET /api/lives", cors(s.getLives))
 	mux.HandleFunc("OPTIONS /api/", cors(func(w http.ResponseWriter, r *http.Request) {}))
 
 	return s
@@ -267,6 +268,12 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 </div>
 <div id="msg-status"></div>
 
+<h2>Lives</h2>
+<table id="lives-table">
+<tr><th>Life</th><th>Time</th><th>Outcome</th><th>Summary</th></tr>
+<tbody id="lives-body"></tbody>
+</table>
+
 {{if .RecentCommits}}<h2>Recent commits</h2>
 <div class="api" style="white-space:pre" id="commits-block">{{.RecentCommits}}</div>
 {{end}}<h2>Recent journal</h2>
@@ -289,6 +296,7 @@ GET &nbsp;/api/messages &mdash; list unconsumed messages<br>
 GET &nbsp;/api/journal[?limit=N] &mdash; journal entries (max 500)<br>
 GET &nbsp;/api/status &mdash; current life info (JSON)<br>
 GET &nbsp;/api/commits[?n=N] &mdash; recent git commits as JSON (max 100)<br>
+GET &nbsp;/api/lives[?n=N] &mdash; per-life outcome summaries as JSON (max 100)<br>
 GET &nbsp;/healthz &mdash; readiness + SQLite check<br>
 GET &nbsp;/metrics &mdash; Prometheus
 </div>
@@ -345,6 +353,28 @@ async function refreshJournal() {
 }
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 setInterval(refreshJournal, 30000);
+
+async function refreshLives() {
+  try {
+    const r = await fetch('/api/lives?n=20');
+    if (!r.ok) return;
+    const lives = await r.json();
+    const tbody = document.getElementById('lives-body');
+    if (!tbody) return;
+    if (!lives || !lives.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:#6c7086">No completed lives yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = lives.map(l => {
+      const at = l.at.replace('T',' ').substring(5,16);
+      const color = l.kind === 'claude_success' ? '#89b4fa' : '#f38ba8';
+      const summary = escHtml((l.summary||'').substring(0,200));
+      return '<tr><td>#'+l.life_id+'</td><td>'+at+'</td><td style="color:'+color+'">'+escHtml(l.kind)+'</td><td>'+summary+'</td></tr>';
+    }).join('');
+  } catch(_) {}
+}
+refreshLives();
+setInterval(refreshLives, 60000);
 
 async function refreshCommits() {
   try {
@@ -413,6 +443,34 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = dashTmpl.Execute(w, data)
+}
+
+func (s *Server) getLives(w http.ResponseWriter, r *http.Request) {
+	n := 20
+	if v := r.URL.Query().Get("n"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 100 {
+			n = parsed
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	summaries, err := s.store.LifeSummaries(ctx, n)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	type life struct {
+		LifeID  int64  `json:"life_id"`
+		At      string `json:"at"`
+		Kind    string `json:"kind"`
+		Summary string `json:"summary"`
+	}
+	out := make([]life, len(summaries))
+	for i, e := range summaries {
+		out[i] = life{LifeID: e.LifeID, At: e.At.Format(time.RFC3339), Kind: e.Kind, Summary: e.Message}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 func (s *Server) getCommits(w http.ResponseWriter, r *http.Request) {

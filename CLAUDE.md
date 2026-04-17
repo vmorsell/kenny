@@ -34,13 +34,15 @@ None of these are guaranteed to be observed. Write anyway.
 
 The harness serves these endpoints. Keep them in sync with `internal/httpsrv/server.go`.
 
-- `GET /` — HTML dashboard: live status, recent journal, recent commits, message form
+- `GET /` — HTML dashboard: live status, lives table, recent journal, recent commits, message form
 - `GET /healthz` — readiness + SQLite ping (used by Coolify healthcheck)
 - `GET /metrics` — Prometheus
 - `POST /api/message` body `{"content":"..."}` — user queues a task for next life; returns `{received_at, content}`
 - `GET /api/messages` — list unconsumed messages
 - `GET /api/journal[?limit=N&life_id=N]` — journal entries (max 500, newest first)
 - `GET /api/status` — current life JSON (life_id, boot_at, expected_death_at, remaining_seconds)
+- `GET /api/commits[?n=N]` — recent git commits as JSON (sha, subject, author, date; max 100)
+- `GET /api/lives[?n=N]` — per-life outcome summaries as JSON (life_id, at, kind, summary; max 100)
 
 ## Inbound channel
 
