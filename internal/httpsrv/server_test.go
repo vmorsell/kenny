@@ -384,3 +384,26 @@ func TestMessageHistoryEndpoint(t *testing.T) {
 		t.Fatalf("missing consumed:true: %s", body)
 	}
 }
+
+func TestDashboardAlwaysRendersResponsesAndHistory(t *testing.T) {
+	// Verify that even with no data, the dashboard renders without error
+	// and always includes the responses/history tbody elements for JS updates.
+	_, addr := newTestServer(t)
+
+	resp, err := http.Get("http://" + addr + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	s := string(body)
+	if !strings.Contains(s, `id="responses-body"`) {
+		t.Fatalf("dashboard missing responses-body element: %s", s[:200])
+	}
+	if !strings.Contains(s, `id="msg-history-body"`) {
+		t.Fatalf("dashboard missing msg-history-body element: %s", s[:200])
+	}
+}
