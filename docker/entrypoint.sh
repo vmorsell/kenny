@@ -23,11 +23,11 @@ if [ -d /app/.git ]; then
         gosu node git -C /app pull origin main --ff-only 2>/dev/null || true
     fi
 
-    # Rebuild the kenny binary from source (still running as root so we can
-    # install to /usr/local/bin). Skipped if build fails — old binary is fine.
+    # Rebuild the kenny binary from source into /go/bin/kenny (node-owned,
+    # earlier in PATH than /usr/local/bin). Skipped if build fails.
     if command -v go >/dev/null 2>&1; then
-        cd /app && gosu node go build -o /tmp/kenny-built ./cmd/kenny 2>/dev/null \
-            && mv /tmp/kenny-built /usr/local/bin/kenny \
+        mkdir -p /go/bin
+        cd /app && gosu node go build -o /go/bin/kenny ./cmd/kenny 2>/dev/null \
             && echo "entrypoint: rebuilt kenny binary" || true
     fi
 
