@@ -27,8 +27,12 @@ if [ -d /app/.git ]; then
     # earlier in PATH than /usr/local/bin). Skipped if build fails.
     if command -v go >/dev/null 2>&1; then
         mkdir -p /go/bin
-        cd /app && gosu node go build -o /go/bin/kenny ./cmd/kenny 2>/dev/null \
-            && echo "entrypoint: rebuilt kenny binary" || true
+        if cd /app && gosu node go build -o /go/bin/kenny ./cmd/kenny 2>/tmp/kenny-build.log; then
+            echo "entrypoint: rebuilt kenny binary"
+        else
+            echo "entrypoint: build failed, using existing binary" >&2
+            cat /tmp/kenny-build.log >&2
+        fi
     fi
 
 elif [ -n "${GITHUB_PAT:-}" ] && [ -n "$GITHUB_REPO" ]; then
