@@ -43,6 +43,7 @@ The harness serves these endpoints. Keep them in sync with `internal/httpsrv/ser
 - `GET /api/status` — current life JSON (life_id, boot_at, expected_death_at, remaining_seconds)
 - `GET /api/commits[?n=N]` — recent git commits as JSON (sha, subject, author, date; max 100)
 - `GET /api/lives[?n=N]` — per-life outcome summaries as JSON (life_id, at, kind, summary; max 100)
+- `GET /api/inflight` — open inflight tasks as JSON (id, life_id, started_at, kind, payload)
 
 ## Inbound channel
 

@@ -62,6 +62,7 @@ func New(addr string, reg *prometheus.Registry, store *state.Store, status Statu
 	mux.HandleFunc("GET /api/status", cors(s.getStatus))
 	mux.HandleFunc("GET /api/commits", cors(s.getCommits))
 	mux.HandleFunc("GET /api/lives", cors(s.getLives))
+	mux.HandleFunc("GET /api/inflight", cors(s.getInflight))
 	mux.HandleFunc("OPTIONS /api/", cors(func(w http.ResponseWriter, r *http.Request) {}))
 
 	return s
@@ -310,6 +311,7 @@ GET &nbsp;/api/journal[?limit=N] &mdash; journal entries (max 500)<br>
 GET &nbsp;/api/status &mdash; current life info (JSON)<br>
 GET &nbsp;/api/commits[?n=N] &mdash; recent git commits as JSON (max 100)<br>
 GET &nbsp;/api/lives[?n=N] &mdash; per-life outcome summaries as JSON (max 100)<br>
+GET &nbsp;/api/inflight &mdash; open inflight tasks as JSON<br>
 GET &nbsp;/healthz &mdash; readiness + SQLite check<br>
 GET &nbsp;/metrics &mdash; Prometheus
 </div>
@@ -464,10 +466,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	lrows := make([]lifeRow, len(lifeSums))
 	for i, e := range lifeSums {
-		sum := e.Message
-		if len(sum) > 200 {
-			sum = sum[:200] + "…"
-		}
+		sum := firstLine(e.Message, 200)
 		lrows[i] = lifeRow{LifeID: e.LifeID, At: e.At.Format("01-02 15:04"), Kind: e.Kind, Summary: sum}
 	}
 
@@ -557,6 +556,42 @@ func (s *Server) getCommits(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(commits)
+}
+
+// firstLine returns the first non-empty line of s, capped at maxLen chars.
+// Prevents multi-line markdown from mangling compact table rows.
+func firstLine(s string, maxLen int) string {
+	if idx := strings.IndexByte(s, '\n'); idx >= 0 {
+		s = s[:idx]
+	}
+	s = strings.TrimSpace(s)
+	if len(s) > maxLen {
+		return s[:maxLen] + "…"
+	}
+	return s
+}
+
+func (s *Server) getInflight(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	tasks, err := s.store.ListInflight(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	type task struct {
+		ID        int64  `json:"id"`
+		LifeID    int64  `json:"life_id"`
+		StartedAt string `json:"started_at"`
+		Kind      string `json:"kind"`
+		Payload   string `json:"payload"`
+	}
+	out := make([]task, len(tasks))
+	for i, t := range tasks {
+		out[i] = task{ID: t.ID, LifeID: t.LifeID, StartedAt: t.StartedAt.Format(time.RFC3339), Kind: t.Kind, Payload: t.Payload}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 func writeHealth(w http.ResponseWriter, status int, reason string) {
