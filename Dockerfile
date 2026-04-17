@@ -41,6 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy the Go toolchain from the builder image so Claude Code can run
 # `go build` / `go test` inside Kenny's container when self-modifying.
 COPY --from=builder /usr/local/go /usr/local/go
+# Copy the module cache so the entrypoint's self-update rebuild works offline.
+COPY --from=builder /go/pkg/mod /go/pkg/mod
 ENV PATH="/usr/local/go/bin:/go/bin:${PATH}"
 ENV GOPATH=/go
 ENV GOCACHE=/go/cache
@@ -59,7 +61,7 @@ COPY --from=builder /out/kenny /usr/local/bin/kenny
 # Everything Kenny (and Claude Code running inside Kenny) writes to is
 # owned by the node user (uid 1000) that this image ships with. /state
 # is a volume mount so its ownership is re-applied at entrypoint.
-RUN mkdir -p "$GOPATH" "$GOCACHE" /state \
+RUN mkdir -p "$GOPATH" "$GOCACHE" /go/bin /state \
     && chown -R node:node /app "$GOPATH" /state
 
 VOLUME ["/state"]
