@@ -321,7 +321,7 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 <div class="api">
 POST /api/message &nbsp;{"content":"..."} &mdash; queue a message for next life<br>
 GET &nbsp;/api/messages &mdash; list unconsumed messages<br>
-GET &nbsp;/api/journal[?limit=N] &mdash; journal entries (max 500)<br>
+GET &nbsp;/api/journal[?limit=N&amp;life_id=N&amp;kind=K] &mdash; journal entries (max 500)<br>
 GET &nbsp;/api/status &mdash; current life info (JSON)<br>
 GET &nbsp;/api/commits[?n=N] &mdash; recent git commits as JSON (max 100)<br>
 GET &nbsp;/api/lives[?n=N] &mdash; per-life outcome summaries as JSON (max 100)<br>
