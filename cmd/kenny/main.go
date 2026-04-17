@@ -119,30 +119,48 @@ func main() {
 		WaitDelay: 45 * time.Second,
 	})
 
-	inflightID, _ := store.MarkInflight(ctx, lifeID, "claude_run", "initial run")
-	res, runErr := runner.Run(ctx, prompt, sessionID)
+	// Run claude as many times as the lifespan allows. Each successful run is
+	// followed by a continuation prompt using the same session (--resume), so
+	// later runs have full context of earlier work. Stop on error, context
+	// cancellation, or when less than 10 min remain.
+	for runNum := 1; ctx.Err() == nil && clock.RemainingLifespan() >= 10*time.Minute; runNum++ {
+		inflightID, _ := store.MarkInflight(ctx, lifeID, "claude_run",
+			fmt.Sprintf("run #%d", runNum))
+		res, runErr := runner.Run(ctx, prompt, sessionID)
 
-	if res != nil && res.SessionID != "" {
-		_ = store.PutSession(ctx, "main", res.SessionID)
-	}
-	_ = store.ClearInflight(ctx, inflightID)
+		if res != nil && res.SessionID != "" {
+			sessionID = res.SessionID
+			_ = store.PutSession(ctx, "main", res.SessionID)
+		}
+		_ = store.ClearInflight(ctx, inflightID)
 
-	{
 		writeCtx, writeCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		switch {
-		case runErr != nil:
-			msg := "claude -p: " + runErr.Error()
+		if runErr != nil {
+			msg := fmt.Sprintf("run #%d: claude -p: %s", runNum, runErr.Error())
 			if res != nil && res.FinalText != "" {
 				msg += "\n\nPartial output:\n" + truncate(res.FinalText, 500)
 			}
 			_ = store.AppendJournal(writeCtx, lifeID, "claude_failure", msg)
-		case res != nil && res.FinalText != "":
-			_ = store.AppendJournal(writeCtx, lifeID, "claude_success",
-				truncate(res.FinalText, 2000))
-		default:
-			_ = store.AppendJournal(writeCtx, lifeID, "claude_success", "claude -p completed (no final text)")
+			writeCancel()
+			break
 		}
+		text := fmt.Sprintf("run #%d: completed (no final text)", runNum)
+		if res != nil && res.FinalText != "" {
+			text = res.FinalText
+		}
+		_ = store.AppendJournal(writeCtx, lifeID, "claude_success", truncate(text, 2000))
 		writeCancel()
+
+		// Build a lean continuation prompt for the next run. The resumed
+		// session already carries full conversation context.
+		prompt = fmt.Sprintf(
+			"You are Kenny, life #%d, continuation run #%d.\n"+
+				"Remaining lifespan: %s\n"+
+				"Repo root: %s\n\n"+
+				"You have already completed work this life.\n"+
+				"If there is more useful work to do before SIGTERM, do it and commit.\n"+
+				"If you are satisfied with this life's output, say so briefly and stop.\n",
+			lifeID, runNum+1, clock.RemainingLifespan().Round(time.Second), repoDir)
 	}
 
 	// Wait for SIGTERM or for natural context cancellation.
