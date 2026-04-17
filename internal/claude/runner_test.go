@@ -93,6 +93,43 @@ exit 2
 	}
 }
 
+func TestRunPassesResumeFlag(t *testing.T) {
+	// Fake claude outputs different text depending on whether --resume was passed.
+	script := `#!/bin/sh
+HAS_RESUME=false
+for arg in "$@"; do
+  if [ "$arg" = "--resume" ]; then HAS_RESUME=true; fi
+done
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"s1"}'
+if $HAS_RESUME; then
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"resumed"}]}}'
+else
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"fresh"}]}}'
+fi
+exit 0
+`
+	binary := writeFakeClaude(t, script)
+	r := newTestRunner(t, binary)
+
+	// Without session — expect "fresh".
+	res, err := r.Run(context.Background(), "hi", "")
+	if err != nil {
+		t.Fatalf("Run (no session): %v", err)
+	}
+	if res.FinalText != "fresh" {
+		t.Fatalf("no session: FinalText = %q, want fresh", res.FinalText)
+	}
+
+	// With session — expect "resumed".
+	res2, err := r.Run(context.Background(), "hi", "sess-abc")
+	if err != nil {
+		t.Fatalf("Run (with session): %v", err)
+	}
+	if res2.FinalText != "resumed" {
+		t.Fatalf("with session: FinalText = %q, want resumed", res2.FinalText)
+	}
+}
+
 func TestRunCancellationSendsSIGTERM(t *testing.T) {
 	// Sleep for a long time; we'll cancel.
 	script := `#!/bin/sh
