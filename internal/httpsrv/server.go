@@ -267,12 +267,14 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 {{end}}<h2>Recent journal</h2>
 <table>
 <tr><th>Life</th><th>Time</th><th>Kind</th><th>Message</th></tr>
+<tbody id="journal-body">
 {{range .Journal}}<tr>
   <td>{{.LifeID}}</td>
   <td>{{.At}}</td>
   <td class="kind-{{.Kind}}">{{.Kind}}</td>
   <td>{{.Message}}</td>
 </tr>{{end}}
+</tbody>
 </table>
 
 <h2>API</h2>
@@ -318,6 +320,25 @@ async function sendMessage() {
     st.style.color = '#f38ba8';
   }
 }
+
+async function refreshJournal() {
+  try {
+    const r = await fetch('/api/journal?limit=20');
+    if (!r.ok) return;
+    const entries = await r.json();
+    const tbody = document.getElementById('journal-body');
+    if (!tbody) return;
+    const kindColor = {boot:'#a6e3a1',claude_success:'#89b4fa',claude_failure:'#f38ba8',last_words:'#fab387'};
+    tbody.innerHTML = entries.map(e => {
+      const at = e.at.replace('T',' ').substring(5,16);
+      const color = kindColor[e.kind] || '#cdd6f4';
+      const msg = (e.message||'').substring(0,200);
+      return '<tr><td>'+e.life_id+'</td><td>'+at+'</td><td style="color:'+color+'">'+e.kind+'</td><td>'+escHtml(msg)+'</td></tr>';
+    }).join('');
+  } catch(_) {}
+}
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+setInterval(refreshJournal, 30000);
 </script>
 </body></html>
 `))
