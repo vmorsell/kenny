@@ -290,6 +290,7 @@ td{padding:.3rem .5rem;border-bottom:1px solid #181825;vertical-align:top;word-b
 td:first-child,td:nth-child(2){white-space:nowrap;color:#6c7086}
 .kind-boot{color:#a6e3a1}.kind-claude_success{color:#89b4fa}
 .kind-claude_failure{color:#f38ba8}.kind-last_words{color:#fab387}
+.kind-message_response{color:#cba6f7}
 h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 .api{background:#181825;border:1px solid #313244;border-radius:6px;padding:.75rem 1rem;font-size:.85em;line-height:1.8}
 .msg-form{display:flex;gap:.5rem;margin-top:1.5rem}
@@ -432,7 +433,7 @@ async function refreshJournal() {
     const entries = await r.json();
     const tbody = document.getElementById('journal-body');
     if (!tbody) return;
-    const kindColor = {boot:'#a6e3a1',claude_success:'#89b4fa',claude_failure:'#f38ba8',last_words:'#fab387'};
+    const kindColor = {boot:'#a6e3a1',claude_success:'#89b4fa',claude_failure:'#f38ba8',last_words:'#fab387',message_response:'#cba6f7'};
     tbody.innerHTML = entries.map(e => {
       const at = e.at.replace('T',' ').substring(5,16);
       const color = kindColor[e.kind] || '#cdd6f4';
