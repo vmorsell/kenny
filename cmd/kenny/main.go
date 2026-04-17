@@ -191,7 +191,7 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 			remaining.Round(time.Second))
 	}
 
-	if gitLog := recentGitLog(repoDir, 5); gitLog != "" {
+	if gitLog := recentGitLog(repoDir, 10); gitLog != "" {
 		sb.WriteString("Recent commits (git log --oneline):\n")
 		sb.WriteString(gitLog)
 		sb.WriteString("\n")
