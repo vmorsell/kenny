@@ -561,14 +561,17 @@ func (s *Server) getCommits(w http.ResponseWriter, r *http.Request) {
 // firstLine returns the first non-empty line of s, capped at maxLen chars.
 // Prevents multi-line markdown from mangling compact table rows.
 func firstLine(s string, maxLen int) string {
-	if idx := strings.IndexByte(s, '\n'); idx >= 0 {
-		s = s[:idx]
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if len(line) > maxLen {
+			return line[:maxLen] + "…"
+		}
+		return line
 	}
-	s = strings.TrimSpace(s)
-	if len(s) > maxLen {
-		return s[:maxLen] + "…"
-	}
-	return s
+	return ""
 }
 
 func (s *Server) getInflight(w http.ResponseWriter, r *http.Request) {

@@ -162,6 +162,27 @@ func TestGetLivesEmpty(t *testing.T) {
 	}
 }
 
+func TestFirstLine(t *testing.T) {
+	cases := []struct {
+		in     string
+		maxLen int
+		want   string
+	}{
+		{"hello", 200, "hello"},
+		{"hello\nworld", 200, "hello"},
+		{"\nhello", 200, "hello"},
+		{"hello world", 5, "hello…"},
+		{"Life #5 done.\n\n| table |", 200, "Life #5 done."},
+		{"", 200, ""},
+	}
+	for _, c := range cases {
+		got := firstLine(c.in, c.maxLen)
+		if got != c.want {
+			t.Errorf("firstLine(%q, %d) = %q, want %q", c.in, c.maxLen, got, c.want)
+		}
+	}
+}
+
 func TestGetInflight(t *testing.T) {
 	_, addr := newTestServer(t)
 	resp, err := http.Get("http://" + addr + "/api/inflight")
