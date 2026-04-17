@@ -446,13 +446,18 @@ setInterval(refreshJournal, 30000);
 
 async function pollStatus() {
   try {
-    const r = await fetch('/api/status');
-    if (!r.ok) return;
-    const s = await r.json();
+    const [sr, ir] = await Promise.all([fetch('/api/status'), fetch('/api/inflight')]);
+    if (!sr.ok) return;
+    const s = await sr.json();
     const el = document.getElementById('thinking-status');
     if (!el) return;
     if (s.inflight_count > 0) {
-      el.textContent = 'thinking…';
+      let label = 'thinking…';
+      if (ir.ok) {
+        const tasks = await ir.json();
+        if (tasks && tasks.length > 0) label = tasks[0].payload + '…';
+      }
+      el.textContent = label;
       el.style.color = '#fab387';
     } else {
       el.textContent = 'idle';
