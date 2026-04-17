@@ -271,7 +271,14 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 <h2>Lives</h2>
 <table id="lives-table">
 <tr><th>Life</th><th>Time</th><th>Outcome</th><th>Summary</th></tr>
-<tbody id="lives-body"></tbody>
+<tbody id="lives-body">
+{{if .Lives}}{{range .Lives}}<tr>
+  <td>#{{.LifeID}}</td>
+  <td>{{.At}}</td>
+  <td class="kind-{{.Kind}}">{{.Kind}}</td>
+  <td>{{.Summary}}</td>
+</tr>{{end}}{{else}}<tr><td colspan="4" style="color:#6c7086">No completed lives yet</td></tr>{{end}}
+</tbody>
 </table>
 
 {{if .RecentCommits}}<h2>Recent commits</h2>
@@ -401,6 +408,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 
 	entries, _ := s.store.RecentJournal(ctx, 20)
 	pending, _ := s.store.PendingMessages(ctx)
+	lifeSums, _ := s.store.LifeSummaries(ctx, 20)
 
 	now := time.Now().UTC()
 	remaining := s.status.ExpectedDeathAt.Sub(now)
@@ -423,6 +431,21 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		rows[i] = row{LifeID: e.LifeID, At: e.At.Format("01-02 15:04"), Kind: e.Kind, Message: msg}
 	}
 
+	type lifeRow struct {
+		LifeID  int64
+		At      string
+		Kind    string
+		Summary string
+	}
+	lrows := make([]lifeRow, len(lifeSums))
+	for i, e := range lifeSums {
+		sum := e.Message
+		if len(sum) > 200 {
+			sum = sum[:200] + "…"
+		}
+		lrows[i] = lifeRow{LifeID: e.LifeID, At: e.At.Format("01-02 15:04"), Kind: e.Kind, Summary: sum}
+	}
+
 	data := struct {
 		LifeID           int64
 		BootAt           string
@@ -431,6 +454,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		PendingCount     int
 		RecentCommits    string
 		Journal          []row
+		Lives            []lifeRow
 	}{
 		LifeID:           s.status.LifeID,
 		BootAt:           s.status.BootAt.Format(time.RFC3339),
@@ -439,6 +463,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		PendingCount:     len(pending),
 		RecentCommits:    s.status.RecentCommits,
 		Journal:          rows,
+		Lives:            lrows,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

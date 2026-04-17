@@ -145,3 +145,43 @@ func TestPostMessageEmptyBody(t *testing.T) {
 		t.Fatalf("empty content: status = %d, want 400", resp.StatusCode)
 	}
 }
+
+func TestGetLivesEmpty(t *testing.T) {
+	_, addr := newTestServer(t)
+	resp, err := http.Get("http://" + addr + "/api/lives")
+	if err != nil {
+		t.Fatalf("GET /api/lives: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "[") {
+		t.Fatalf("expected JSON array, got: %s", body)
+	}
+}
+
+func TestGetLivesWithData(t *testing.T) {
+	ctx := context.Background()
+
+	store, err := state.Open(ctx, filepath.Join(t.TempDir(), "kenny2.db"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	defer store.Close()
+
+	_ = store.AppendJournal(ctx, 1, "claude_success", "life one done")
+	_ = store.AppendJournal(ctx, 2, "claude_success", "life two done")
+
+	summaries, err := store.LifeSummaries(ctx, 10)
+	if err != nil {
+		t.Fatalf("LifeSummaries: %v", err)
+	}
+	if len(summaries) != 2 {
+		t.Fatalf("got %d summaries, want 2", len(summaries))
+	}
+	if summaries[0].LifeID != 2 || summaries[1].LifeID != 1 {
+		t.Fatalf("unexpected order: %+v", summaries)
+	}
+}
