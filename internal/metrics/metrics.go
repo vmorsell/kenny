@@ -23,7 +23,6 @@ type BuildInfo struct {
 type Metrics struct {
 	ClaudeInvocations *prometheus.CounterVec
 	ClaudeDuration    prometheus.Histogram
-	SelfModCommits    prometheus.Counter
 }
 
 // Register builds and registers all of Kenny's metrics against reg.
@@ -45,14 +44,8 @@ func Register(reg prometheus.Registerer, clock *lifecycle.Clock, store *state.St
 				Buckets: prometheus.ExponentialBuckets(1, 2, 12), // 1s … ~68m
 			},
 		),
-		SelfModCommits: prometheus.NewCounter(
-			prometheus.CounterOpts{
-				Name: "kenny_self_mod_commits_total",
-				Help: "Count of self-modification commits Kenny has pushed this life.",
-			},
-		),
 	}
-	reg.MustRegister(m.ClaudeInvocations, m.ClaudeDuration, m.SelfModCommits)
+	reg.MustRegister(m.ClaudeInvocations, m.ClaudeDuration)
 
 	reg.MustRegister(prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
@@ -115,6 +108,24 @@ func Register(reg prometheus.Registerer, clock *lifecycle.Clock, store *state.St
 				return 0
 			}
 			return float64(n)
+		},
+	))
+
+	reg.MustRegister(prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "kenny_self_mod_commits_total",
+			Help: "Total self-modification commits by Kenny, updated from git log on each boot.",
+		},
+		func() float64 {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			v, ok, err := store.GetMetadata(ctx, "self_mod_commits_total")
+			if err != nil || !ok {
+				return 0
+			}
+			var n float64
+			_, _ = fmt.Sscanf(v, "%f", &n)
+			return n
 		},
 	))
 

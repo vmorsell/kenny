@@ -34,7 +34,6 @@ func TestRegisterAndScrape(t *testing.T) {
 	m := Register(reg, clock, store, BuildInfo{SHA: "abc123", BuiltAt: "2026-04-16T10:00:00Z"})
 
 	m.ClaudeInvocations.WithLabelValues("success").Inc()
-	m.SelfModCommits.Inc()
 
 	got, err := testutil.GatherAndLint(reg)
 	if err != nil {
@@ -77,8 +76,5 @@ func TestRegisterAndScrape(t *testing.T) {
 
 	if v := testutil.ToFloat64(m.ClaudeInvocations.WithLabelValues("success")); v != 1 {
 		t.Fatalf("ClaudeInvocations{success} = %v, want 1", v)
-	}
-	if v := testutil.ToFloat64(m.SelfModCommits); v != 1 {
-		t.Fatalf("SelfModCommits = %v, want 1", v)
 	}
 }

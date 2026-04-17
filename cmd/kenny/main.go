@@ -90,6 +90,8 @@ func main() {
 
 	srv.MarkReady()
 
+	updateSelfModCommits(ctx, store, repoDir)
+
 	prompt, err := buildBootPrompt(ctx, store, clock, lifeID, repoDir)
 	if err != nil {
 		logger.Error("build prompt", slog.String("err", err.Error()))
@@ -211,6 +213,16 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 
 	sb.WriteString("Work on what matters. Commit before you die.\n")
 	return sb.String(), nil
+}
+
+func updateSelfModCommits(ctx context.Context, store *state.Store, repoDir string) {
+	out, err := exec.Command("git", "-C", repoDir, "rev-list", "--count",
+		"--author=Kenny", "HEAD").Output()
+	if err != nil {
+		return
+	}
+	count := strings.TrimSpace(string(out))
+	_ = store.SetMetadata(ctx, "self_mod_commits_total", count)
 }
 
 func recentGitLog(repoDir string, n int) string {
