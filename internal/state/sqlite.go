@@ -178,9 +178,19 @@ func (s *Store) AppendJournal(ctx context.Context, lifeID int64, kind, message s
 	return err
 }
 
-func (s *Store) RecentJournal(ctx context.Context, limit int) ([]JournalEntry, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, life_id, at, kind, message FROM journal ORDER BY id DESC LIMIT ?`, limit)
+// RecentJournal returns the most recent journal entries, newest first.
+// If lifeID > 0 only entries for that life are returned.
+func (s *Store) RecentJournal(ctx context.Context, limit int, lifeID ...int64) ([]JournalEntry, error) {
+	var rows *sql.Rows
+	var err error
+	if len(lifeID) > 0 && lifeID[0] > 0 {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, life_id, at, kind, message FROM journal WHERE life_id = ? ORDER BY id DESC LIMIT ?`,
+			lifeID[0], limit)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, life_id, at, kind, message FROM journal ORDER BY id DESC LIMIT ?`, limit)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -68,6 +68,7 @@ func main() {
 		LifeID:          lifeID,
 		BootAt:          clock.BootAt(),
 		ExpectedDeathAt: clock.ExpectedDeathAt(),
+		RecentCommits:   recentGitLog(repoDir, 8),
 	})
 	srv.Start()
 	defer func() {

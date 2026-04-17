@@ -25,6 +25,7 @@ type StatusInfo struct {
 	LifeID          int64
 	BootAt          time.Time
 	ExpectedDeathAt time.Time
+	RecentCommits   string // output of git log --oneline -5
 }
 
 type Server struct {
@@ -167,9 +168,15 @@ func (s *Server) getJournal(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	var lifeID int64
+	if v := r.URL.Query().Get("life_id"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			lifeID = n
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	entries, err := s.store.RecentJournal(ctx, limit)
+	entries, err := s.store.RecentJournal(ctx, limit, lifeID)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -255,7 +262,9 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 </div>
 <div id="msg-status"></div>
 
-<h2>Recent journal</h2>
+{{if .RecentCommits}}<h2>Recent commits</h2>
+<div class="api" style="white-space:pre">{{.RecentCommits}}</div>
+{{end}}<h2>Recent journal</h2>
 <table>
 <tr><th>Life</th><th>Time</th><th>Kind</th><th>Message</th></tr>
 {{range .Journal}}<tr>
@@ -351,6 +360,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		ExpectedDeathAt  string
 		RemainingSeconds int64
 		PendingCount     int
+		RecentCommits    string
 		Journal          []row
 	}{
 		LifeID:           s.status.LifeID,
@@ -358,6 +368,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		ExpectedDeathAt:  s.status.ExpectedDeathAt.Format(time.RFC3339),
 		RemainingSeconds: int64(remaining.Seconds()),
 		PendingCount:     len(pending),
+		RecentCommits:    s.status.RecentCommits,
 		Journal:          rows,
 	}
 
