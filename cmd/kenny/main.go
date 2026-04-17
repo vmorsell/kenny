@@ -69,6 +69,7 @@ func main() {
 		BootAt:          clock.BootAt(),
 		ExpectedDeathAt: clock.ExpectedDeathAt(),
 		RecentCommits:   recentGitLog(repoDir, 8),
+		RepoDir:         repoDir,
 	})
 	srv.Start()
 	defer func() {
@@ -159,7 +160,11 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 	// Clean up open tasks left by crashed previous lives before reading.
 	_ = store.CloseStaleInflights(ctx, lifeID)
 
-	recent, err := store.RecentJournal(ctx, 20)
+	summaries, err := store.LifeSummaries(ctx, 5)
+	if err != nil {
+		return "", err
+	}
+	recent, err := store.RecentJournal(ctx, 8)
 	if err != nil {
 		return "", err
 	}
@@ -201,6 +206,17 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 		_ = store.ConsumeMessages(ctx)
 	}
 
+	if len(summaries) > 0 {
+		sb.WriteString("What previous lives accomplished (one entry per life, most recent first):\n")
+		for _, e := range summaries {
+			fmt.Fprintf(&sb, "- [life %d | %s | %s] %s\n",
+				e.LifeID, e.At.Format(time.RFC3339), e.Kind, truncate(e.Message, 300))
+		}
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("No previous life summaries. This may be your first life.\n\n")
+	}
+
 	if len(recent) > 0 {
 		sb.WriteString("Recent journal entries (most recent first):\n")
 		for _, e := range recent {
@@ -208,8 +224,6 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 				e.LifeID, e.At.Format(time.RFC3339), e.Kind, truncate(e.Message, 300))
 		}
 		sb.WriteString("\n")
-	} else {
-		sb.WriteString("The journal is empty. This may be your first life.\n\n")
 	}
 
 	if len(inflight) > 0 {

@@ -8,9 +8,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
+	"os/exec"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -25,7 +28,8 @@ type StatusInfo struct {
 	LifeID          int64
 	BootAt          time.Time
 	ExpectedDeathAt time.Time
-	RecentCommits   string // output of git log --oneline -5
+	RecentCommits   string // output of git log --oneline -8
+	RepoDir         string // path to git repo root for /api/commits
 }
 
 type Server struct {
@@ -56,6 +60,7 @@ func New(addr string, reg *prometheus.Registry, store *state.Store, status Statu
 	mux.HandleFunc("GET /api/messages", cors(s.getMessages))
 	mux.HandleFunc("GET /api/journal", cors(s.getJournal))
 	mux.HandleFunc("GET /api/status", cors(s.getStatus))
+	mux.HandleFunc("GET /api/commits", cors(s.getCommits))
 	mux.HandleFunc("OPTIONS /api/", cors(func(w http.ResponseWriter, r *http.Request) {}))
 
 	return s
@@ -263,7 +268,7 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 <div id="msg-status"></div>
 
 {{if .RecentCommits}}<h2>Recent commits</h2>
-<div class="api" style="white-space:pre">{{.RecentCommits}}</div>
+<div class="api" style="white-space:pre" id="commits-block">{{.RecentCommits}}</div>
 {{end}}<h2>Recent journal</h2>
 <table>
 <tr><th>Life</th><th>Time</th><th>Kind</th><th>Message</th></tr>
@@ -283,6 +288,7 @@ POST /api/message &nbsp;{"content":"..."} &mdash; queue a message for next life<
 GET &nbsp;/api/messages &mdash; list unconsumed messages<br>
 GET &nbsp;/api/journal[?limit=N] &mdash; journal entries (max 500)<br>
 GET &nbsp;/api/status &mdash; current life info (JSON)<br>
+GET &nbsp;/api/commits[?n=N] &mdash; recent git commits as JSON (max 100)<br>
 GET &nbsp;/healthz &mdash; readiness + SQLite check<br>
 GET &nbsp;/metrics &mdash; Prometheus
 </div>
@@ -339,6 +345,18 @@ async function refreshJournal() {
 }
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 setInterval(refreshJournal, 30000);
+
+async function refreshCommits() {
+  try {
+    const r = await fetch('/api/commits?n=8');
+    if (!r.ok) return;
+    const commits = await r.json();
+    const el = document.getElementById('commits-block');
+    if (!el || !commits.length) return;
+    el.textContent = commits.map(c => c.sha + ' ' + c.subject).join('\n');
+  } catch(_) {}
+}
+setInterval(refreshCommits, 60000);
 </script>
 </body></html>
 `))
@@ -395,6 +413,42 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = dashTmpl.Execute(w, data)
+}
+
+func (s *Server) getCommits(w http.ResponseWriter, r *http.Request) {
+	n := 20
+	if v := r.URL.Query().Get("n"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 100 {
+			n = parsed
+		}
+	}
+	repoDir := s.status.RepoDir
+	out, err := exec.CommandContext(r.Context(), "git", "-C", repoDir, "log",
+		fmt.Sprintf("-%d", n), "--pretty=format:%H\t%s\t%an\t%ai").Output()
+	if err != nil || repoDir == "" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]struct{}{})
+		return
+	}
+	type commit struct {
+		SHA     string `json:"sha"`
+		Subject string `json:"subject"`
+		Author  string `json:"author"`
+		Date    string `json:"date"`
+	}
+	var commits []commit
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 4)
+		if len(parts) != 4 {
+			continue
+		}
+		commits = append(commits, commit{SHA: parts[0][:7], Subject: parts[1], Author: parts[2], Date: parts[3]})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(commits)
 }
 
 func writeHealth(w http.ResponseWriter, status int, reason string) {

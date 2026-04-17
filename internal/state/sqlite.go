@@ -213,6 +213,35 @@ func (s *Store) CountJournalEntries(ctx context.Context) (int64, error) {
 	return n, err
 }
 
+// LifeSummaries returns the last terminal journal entry (claude_success or
+// claude_failure) for each of the most recent numLives lives, newest first.
+// This gives a compact "what each life accomplished" view for the boot prompt.
+func (s *Store) LifeSummaries(ctx context.Context, numLives int) ([]JournalEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, life_id, at, kind, message FROM journal
+		WHERE kind IN ('claude_success', 'claude_failure')
+		AND id IN (
+			SELECT MAX(id) FROM journal
+			WHERE kind IN ('claude_success', 'claude_failure')
+			GROUP BY life_id
+		)
+		ORDER BY id DESC LIMIT ?`, numLives)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []JournalEntry
+	for rows.Next() {
+		var e JournalEntry
+		if err := rows.Scan(&e.ID, &e.LifeID, &e.At, &e.Kind, &e.Message); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // ------------------- Inflight -------------------
 
 func (s *Store) MarkInflight(ctx context.Context, lifeID int64, kind, payload string) (int64, error) {
