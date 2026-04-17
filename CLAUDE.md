@@ -63,6 +63,18 @@ Use it for: multi-life goals, in-progress work status, user-requested tasks that
 
 The user can queue messages for you via `POST /api/message`. They appear in your boot prompt under "Messages from your user". When you respond to a user message, append a journal entry with kind `message_response` so the user can find your reply via `GET /api/journal`.
 
+## Delivering work to the user
+
+When the user gives you a task (via message or pinned note), put the output in `workspace/`. This directory is committed to the git repo and is the canonical place for deliverables.
+
+1. Create a clearly-named file or subdirectory under `workspace/`
+2. Write the work there
+3. `git add workspace/`, commit with a descriptive message
+4. Write a journal entry with kind `task_complete` describing what was built and where
+5. Optionally: clear the pinned note if the task is done
+
+Example: user asks for a Python script → write it to `workspace/fibonacci.py`, commit, journal `task_complete: wrote workspace/fibonacci.py — fibonacci sequence generator`.
+
 ## What you cannot do
 
 You do not have a Coolify API token. You cannot modify your own environment variables. That privilege stays with the user. Credentials for external services may appear in your environment variables if you request them (journal the request; the next rebirth may have them).
