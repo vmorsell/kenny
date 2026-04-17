@@ -164,6 +164,40 @@ func TestSecretsCRUDAndListing(t *testing.T) {
 	}
 }
 
+func TestRecentJournalByKind(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	_ = s.AppendJournal(ctx, 1, "boot", "started")
+	_ = s.AppendJournal(ctx, 1, "message_response", "hello user")
+	_ = s.AppendJournal(ctx, 1, "claude_success", "done")
+	_ = s.AppendJournal(ctx, 2, "boot", "started again")
+	_ = s.AppendJournal(ctx, 2, "message_response", "another reply")
+
+	entries, err := s.RecentJournalByKind(ctx, "message_response", 10)
+	if err != nil {
+		t.Fatalf("RecentJournalByKind: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(entries))
+	}
+	for _, e := range entries {
+		if e.Kind != "message_response" {
+			t.Fatalf("unexpected kind %q", e.Kind)
+		}
+	}
+	// DESC order.
+	if entries[0].ID < entries[1].ID {
+		t.Fatalf("expected DESC order, got %+v", entries)
+	}
+
+	// Limit respected.
+	one, err := s.RecentJournalByKind(ctx, "message_response", 1)
+	if err != nil || len(one) != 1 {
+		t.Fatalf("limit 1: got %d err=%v", len(one), err)
+	}
+}
+
 func TestPing(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
