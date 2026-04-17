@@ -9,6 +9,7 @@
 #   msg <text>          — queue a message for next life
 #   msgs                — list pending messages
 #   history [N]         — all messages ever sent (default 20, includes consumed)
+#   responses [N]       — Kenny's replies to messages (default 10)
 #   journal [N [kind]]  — last N journal entries (default 20); optionally filter by kind
 #   lives [N]           — per-life outcome summaries (default 10)
 #   commits [N]         — recent git commits (default 10)
@@ -63,6 +64,11 @@ case "$CMD" in
     _get "/api/messages/history?limit=${N}" | _json '.[] | "[\(.received_at)\(if .consumed then " consumed" else " PENDING" end)] \(.content)"'
     ;;
 
+  responses)
+    N="${1:-10}"
+    _get "/api/journal?kind=message_response&limit=${N}" | _json '.[] | "[life \(.life_id) | \(.at)]\n\(.message)\n"'
+    ;;
+
   journal)
     N="${1:-20}"
     KIND="${2:-}"
@@ -113,7 +119,7 @@ case "$CMD" in
 
   *)
     echo "unknown command: $CMD" >&2
-    echo "commands: status msg msgs history journal lives commits note inflight session" >&2
+    echo "commands: status msg msgs history responses journal lives commits note inflight session" >&2
     exit 1
     ;;
 esac
