@@ -154,6 +154,10 @@ func main() {
 		_ = store.AppendJournal(writeCtx, lifeID, "claude_success", truncate(text, 2000))
 		writeCancel()
 
+		// Rebuild the binary so the next restart picks up any code changes
+		// made during this run. Best-effort — failure is logged but not fatal.
+		rebuildBinary(repoDir, logger)
+
 		// Build a lean continuation prompt for the next run. The resumed
 		// session carries full conversation context, so this just orients.
 		var cont strings.Builder
@@ -344,4 +348,17 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max] + "…"
+}
+
+// rebuildBinary rebuilds the kenny binary from source into /go/bin/kenny so
+// any code changes made during a claude run take effect on the next restart.
+// /go/bin is node-owned and comes before /usr/local/bin in PATH.
+func rebuildBinary(repoDir string, logger *slog.Logger) {
+	cmd := exec.Command("go", "build", "-o", "/go/bin/kenny", "./cmd/kenny")
+	cmd.Dir = repoDir
+	if err := cmd.Run(); err != nil {
+		logger.Warn("rebuild.failed", slog.String("err", err.Error()))
+		return
+	}
+	logger.Info("rebuild.ok")
 }
