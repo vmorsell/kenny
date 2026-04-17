@@ -46,10 +46,13 @@ func newTestRunner(t *testing.T, binary string) *Runner {
 }
 
 func TestRunParsesStreamJSON(t *testing.T) {
+	// Write events one-per-line; sleep briefly between lines so the reader
+	// goroutine is guaranteed to be scheduled and reading before EOF.
 	script := `#!/bin/sh
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"sess-xyz"}'
 printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"hello world"}]}}'
 printf '%s\n' '{"type":"result","is_error":false,"result":"done"}'
+sleep 0.05
 exit 0
 `
 	binary := writeFakeClaude(t, script)

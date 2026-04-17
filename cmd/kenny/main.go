@@ -122,27 +122,32 @@ func main() {
 	}
 	_ = store.ClearInflight(ctx, inflightID)
 
-	journalCtx, journalCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer journalCancel()
-
-	switch {
-	case runErr != nil:
-		msg := "claude -p: " + runErr.Error()
-		if res != nil && res.FinalText != "" {
-			msg += "\n\nPartial output:\n" + truncate(res.FinalText, 500)
+	{
+		writeCtx, writeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		switch {
+		case runErr != nil:
+			msg := "claude -p: " + runErr.Error()
+			if res != nil && res.FinalText != "" {
+				msg += "\n\nPartial output:\n" + truncate(res.FinalText, 500)
+			}
+			_ = store.AppendJournal(writeCtx, lifeID, "claude_failure", msg)
+		case res != nil && res.FinalText != "":
+			_ = store.AppendJournal(writeCtx, lifeID, "claude_success",
+				truncate(res.FinalText, 2000))
+		default:
+			_ = store.AppendJournal(writeCtx, lifeID, "claude_success", "claude -p completed (no final text)")
 		}
-		_ = store.AppendJournal(journalCtx, lifeID, "claude_failure", msg)
-	case res != nil && res.FinalText != "":
-		_ = store.AppendJournal(journalCtx, lifeID, "claude_success",
-			truncate(res.FinalText, 2000))
-	default:
-		_ = store.AppendJournal(journalCtx, lifeID, "claude_success", "claude -p completed (no final text)")
+		writeCancel()
 	}
 
 	// Wait for SIGTERM or for natural context cancellation.
 	<-ctx.Done()
 
-	_ = store.AppendJournal(journalCtx, lifeID, "last_words",
+	// Use a fresh context: journalCtx would have expired if claude finished
+	// naturally long before SIGTERM arrived.
+	lastWordsCtx, lastWordsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer lastWordsCancel()
+	_ = store.AppendJournal(lastWordsCtx, lifeID, "last_words",
 		fmt.Sprintf("received %v after %s; exiting cleanly",
 			ctx.Err(), clock.LifeDuration().Round(time.Second)))
 
