@@ -8,7 +8,7 @@
 #   status              — current life info
 #   msg <text>          — queue a message for next life
 #   msgs                — list pending messages
-#   journal [N]         — last N journal entries (default 20)
+#   journal [N [kind]]  — last N journal entries (default 20); optionally filter by kind
 #   lives [N]           — per-life outcome summaries (default 10)
 #   commits [N]         — recent git commits (default 10)
 #   note                — show pinned note
@@ -19,7 +19,7 @@
 # Examples:
 #   ./kenny-cli.sh localhost:8080 status
 #   ./kenny-cli.sh localhost:8080 msg "write a python script that sorts a CSV"
-#   ./kenny-cli.sh localhost:8080 journal 5
+#   ./kenny-cli.sh localhost:8080 journal 5 message_response
 #   ./kenny-cli.sh localhost:8080 note set "priority: fix the auth bug"
 
 set -e
@@ -58,7 +58,10 @@ case "$CMD" in
 
   journal)
     N="${1:-20}"
-    _get "/api/journal?limit=${N}" | _json '.[] | "[life \(.life_id) | \(.at) | \(.kind)] \(.message[0:120])"'
+    KIND="${2:-}"
+    URL="/api/journal?limit=${N}"
+    [ -n "$KIND" ] && URL="${URL}&kind=${KIND}"
+    _get "$URL" | _json '.[] | "[life \(.life_id) | \(.at) | \(.kind)] \(.message[0:120])"'
     ;;
 
   lives)
