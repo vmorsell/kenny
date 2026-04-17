@@ -249,3 +249,40 @@ func TestMessagesLifecycle(t *testing.T) {
 		t.Fatalf("CountPendingMessages after consume = %d err=%v, want 0", n, err)
 	}
 }
+
+func TestAllMessages(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	_, _ = s.AddMessage(ctx, "first")
+	_, _ = s.AddMessage(ctx, "second")
+
+	// Before consuming, both should show as unconsumed.
+	all, err := s.AllMessages(ctx, 10)
+	if err != nil {
+		t.Fatalf("AllMessages: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("got %d messages, want 2", len(all))
+	}
+	if all[0].ConsumedAt != nil || all[1].ConsumedAt != nil {
+		t.Fatal("expected unconsumed messages")
+	}
+
+	// After consuming, consumed_at should be set.
+	if err := s.ConsumeMessages(ctx); err != nil {
+		t.Fatalf("ConsumeMessages: %v", err)
+	}
+	all, err = s.AllMessages(ctx, 10)
+	if err != nil {
+		t.Fatalf("AllMessages after consume: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("got %d messages after consume, want 2", len(all))
+	}
+	for _, m := range all {
+		if m.ConsumedAt == nil {
+			t.Fatalf("expected consumed message, got nil ConsumedAt for %q", m.Content)
+		}
+	}
+}

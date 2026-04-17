@@ -333,3 +333,54 @@ func TestGetLivesWithData(t *testing.T) {
 		t.Fatalf("unexpected order: %+v", summaries)
 	}
 }
+
+func TestMessageHistoryEndpoint(t *testing.T) {
+	ctx := context.Background()
+
+	store, err := state.Open(ctx, filepath.Join(t.TempDir(), "hist.db"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	defer store.Close()
+	_, _ = store.AddMessage(ctx, "hello from user")
+	_ = store.ConsumeMessages(ctx)
+	_, _ = store.AddMessage(ctx, "pending message")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	reg := prometheus.NewRegistry()
+	s := New(addr, reg, store, StatusInfo{LifeID: 1})
+	s.Start()
+	t.Cleanup(func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Shutdown(shutCtx)
+	})
+	waitReachable(t, addr)
+
+	resp, err := http.Get("http://" + addr + "/api/messages/history")
+	if err != nil {
+		t.Fatalf("GET /api/messages/history: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	// Both messages should appear.
+	if !strings.Contains(string(body), "hello from user") {
+		t.Fatalf("missing consumed message: %s", body)
+	}
+	if !strings.Contains(string(body), "pending message") {
+		t.Fatalf("missing pending message: %s", body)
+	}
+	// Consumed flag should be set on first message.
+	if !strings.Contains(string(body), `"consumed":true`) {
+		t.Fatalf("missing consumed:true: %s", body)
+	}
+}
