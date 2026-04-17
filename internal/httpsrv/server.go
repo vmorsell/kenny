@@ -218,18 +218,21 @@ h1{color:#89b4fa;margin-bottom:0}
 .sub{color:#6c7086;font-size:.85em;margin-bottom:1.5rem}
 .status{background:#181825;border:1px solid #313244;border-radius:6px;padding:1rem;margin-bottom:1.5rem}
 .status dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem .75rem;margin:0}
-.status dt{color:#6c7086}
-.status dd{margin:0;color:#cdd6f4}
+.status dt{color:#6c7086}.status dd{margin:0}
+#countdown{color:#a6e3a1}
 table{width:100%;border-collapse:collapse;font-size:.85em}
 th{text-align:left;border-bottom:1px solid #313244;padding:.3rem .5rem;color:#6c7086}
 td{padding:.3rem .5rem;border-bottom:1px solid #181825;vertical-align:top;word-break:break-word}
 td:first-child,td:nth-child(2){white-space:nowrap;color:#6c7086}
-.kind-boot{color:#a6e3a1}
-.kind-claude_success{color:#89b4fa}
-.kind-claude_failure{color:#f38ba8}
-.kind-last_words{color:#fab387}
+.kind-boot{color:#a6e3a1}.kind-claude_success{color:#89b4fa}
+.kind-claude_failure{color:#f38ba8}.kind-last_words{color:#fab387}
 h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 .api{background:#181825;border:1px solid #313244;border-radius:6px;padding:.75rem 1rem;font-size:.85em;line-height:1.8}
+.msg-form{display:flex;gap:.5rem;margin-top:1.5rem}
+.msg-form textarea{flex:1;background:#181825;border:1px solid #313244;border-radius:4px;color:#cdd6f4;padding:.5rem;font-family:monospace;font-size:.9em;resize:vertical;min-height:60px}
+.msg-form button{background:#89b4fa;color:#1e1e2e;border:none;border-radius:4px;padding:.5rem 1rem;cursor:pointer;font-family:monospace;font-weight:bold;align-self:flex-end}
+.msg-form button:hover{background:#74c7ec}
+#msg-status{font-size:.8em;margin-top:.3rem;color:#a6e3a1}
 </style></head>
 <body>
 <h1>Kenny</h1>
@@ -240,10 +243,17 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
   <dt>Life</dt><dd>#{{.LifeID}}</dd>
   <dt>Boot</dt><dd>{{.BootAt}}</dd>
   <dt>Expected death</dt><dd>{{.ExpectedDeathAt}}</dd>
-  <dt>Remaining</dt><dd>{{.RemainingSeconds}}s</dd>
-  <dt>Pending messages</dt><dd>{{.PendingCount}}</dd>
+  <dt>Remaining</dt><dd><span id="countdown">{{.RemainingSeconds}}s</span></dd>
+  <dt>Pending messages</dt><dd id="pending-count">{{.PendingCount}}</dd>
 </dl>
 </div>
+
+<h2>Send a message to next life</h2>
+<div class="msg-form">
+  <textarea id="msg-input" placeholder="What should Kenny work on?"></textarea>
+  <button onclick="sendMessage()">Send</button>
+</div>
+<div id="msg-status"></div>
 
 <h2>Recent journal</h2>
 <table>
@@ -261,10 +271,45 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 POST /api/message &nbsp;{"content":"..."} &mdash; queue a message for next life<br>
 GET &nbsp;/api/messages &mdash; list unconsumed messages<br>
 GET &nbsp;/api/journal[?limit=N] &mdash; journal entries (max 500)<br>
-GET &nbsp;/api/status &mdash; current life info<br>
-GET &nbsp;/healthz &mdash; readiness check<br>
+GET &nbsp;/api/status &mdash; current life info (JSON)<br>
+GET &nbsp;/healthz &mdash; readiness + SQLite check<br>
 GET &nbsp;/metrics &mdash; Prometheus
 </div>
+
+<script>
+let secs = {{.RemainingSeconds}};
+const cd = document.getElementById('countdown');
+setInterval(() => { if(secs > 0) secs--; cd.textContent = secs + 's'; }, 1000);
+
+async function sendMessage() {
+  const ta = document.getElementById('msg-input');
+  const st = document.getElementById('msg-status');
+  const content = ta.value.trim();
+  if (!content) return;
+  st.textContent = 'Sending…';
+  st.style.color = '#6c7086';
+  try {
+    const r = await fetch('/api/message', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content})
+    });
+    if (r.ok) {
+      ta.value = '';
+      st.textContent = 'Queued. Kenny will see it next life.';
+      st.style.color = '#a6e3a1';
+      const pc = document.getElementById('pending-count');
+      pc.textContent = parseInt(pc.textContent||'0') + 1;
+    } else {
+      st.textContent = 'Error: ' + r.status;
+      st.style.color = '#f38ba8';
+    }
+  } catch(e) {
+    st.textContent = 'Network error: ' + e.message;
+    st.style.color = '#f38ba8';
+  }
+}
+</script>
 </body></html>
 `))
 
