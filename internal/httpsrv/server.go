@@ -322,28 +322,30 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 </div>
 <div id="msg-status"></div>
 
-{{if .Responses}}<h2>Kenny&#39;s responses</h2>
+<h2>Kenny&#39;s responses</h2>
 <table id="responses-table">
 <tr><th>Time</th><th>Response</th></tr>
 <tbody id="responses-body">
-{{range .Responses}}<tr>
+{{if .Responses}}{{range .Responses}}<tr>
   <td>{{.At}}</td>
   <td style="white-space:pre-wrap">{{.Message}}</td>
-</tr>{{end}}
+</tr>{{end}}{{else}}<tr><td colspan="2" style="color:#6c7086">No responses yet</td></tr>{{end}}
 </tbody>
 </table>
-{{end}}{{if .MessageHistory}}<h2>Message history</h2>
+
+<h2>Message history</h2>
 <table id="msg-history-table">
 <tr><th>Sent</th><th>Status</th><th>Content</th></tr>
 <tbody id="msg-history-body">
-{{range .MessageHistory}}<tr>
+{{if .MessageHistory}}{{range .MessageHistory}}<tr>
   <td>{{.ReceivedAt}}</td>
   <td style="color:{{if .Consumed}}#6c7086{{else}}#a6e3a1{{end}}">{{if .Consumed}}consumed{{else}}pending{{end}}</td>
   <td>{{.Content}}</td>
-</tr>{{end}}
+</tr>{{end}}{{else}}<tr><td colspan="3" style="color:#6c7086">No messages yet</td></tr>{{end}}
 </tbody>
 </table>
-{{end}}<h2>Lives</h2>
+
+<h2>Lives</h2>
 <table id="lives-table">
 <tr><th>Life</th><th>Time</th><th>Outcome</th><th>Summary</th></tr>
 <tbody id="lives-body">
@@ -503,8 +505,6 @@ async function refreshResponses() {
     const tbody = document.getElementById('responses-body');
     if (!tbody) return;
     if (!entries || !entries.length) { tbody.innerHTML = '<tr><td colspan="2" style="color:#6c7086">No responses yet</td></tr>'; return; }
-    const table = document.getElementById('responses-table');
-    if (table) table.style.display = '';
     tbody.innerHTML = entries.map(e => {
       const at = e.at.replace('T',' ').substring(5,16);
       return '<tr><td>'+at+'</td><td style="white-space:pre-wrap">'+escHtml((e.message||'').substring(0,1000))+'</td></tr>';
