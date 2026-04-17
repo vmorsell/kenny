@@ -1,4 +1,4 @@
-// Package httpsrv serves Kenny's /healthz and /metrics endpoints.
+// Package httpsrv serves Kenny's HTTP endpoints.
 // /healthz is deep: it verifies the SQLite store is reachable and that
 // Kenny's boot sequence finished. A shallow 200 while the SQLite volume
 // is broken would defeat Coolify's auto-revert, so this matters.
@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"html/template"
 	"net/http"
 	"strconv"
 	"sync/atomic"
@@ -47,12 +48,14 @@ func New(addr string, reg *prometheus.Registry, store *state.Store, status Statu
 		status: status,
 	}
 
+	mux.HandleFunc("/", s.dashboard)
 	mux.HandleFunc("/healthz", s.healthz)
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
-	mux.HandleFunc("POST /api/message", s.postMessage)
-	mux.HandleFunc("GET /api/messages", s.getMessages)
-	mux.HandleFunc("GET /api/journal", s.getJournal)
-	mux.HandleFunc("GET /api/status", s.getStatus)
+	mux.HandleFunc("POST /api/message", cors(s.postMessage))
+	mux.HandleFunc("GET /api/messages", cors(s.getMessages))
+	mux.HandleFunc("GET /api/journal", cors(s.getJournal))
+	mux.HandleFunc("GET /api/status", cors(s.getStatus))
+	mux.HandleFunc("OPTIONS /api/", cors(func(w http.ResponseWriter, r *http.Request) {}))
 
 	return s
 }
@@ -100,6 +103,20 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	writeHealth(w, http.StatusOK, "")
 }
 
+// cors wraps a handler with CORS headers so the API is callable from browsers.
+func cors(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next(w, r)
+	}
+}
+
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Content string `json:"content"`
@@ -110,11 +127,17 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	if err := s.store.AddMessage(ctx, body.Content); err != nil {
+	msg, err := s.store.AddMessage(ctx, body.Content)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"received_at": msg.ReceivedAt.Format(time.RFC3339),
+		"content":     msg.Content,
+	})
 }
 
 func (s *Server) getMessages(w http.ResponseWriter, r *http.Request) {
@@ -184,6 +207,117 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+var dashTmpl = template.Must(template.New("dash").Parse(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Kenny</title>
+<style>
+body{font-family:monospace;max-width:860px;margin:2rem auto;padding:0 1rem;color:#cdd6f4;background:#1e1e2e}
+h1{color:#89b4fa;margin-bottom:0}
+.sub{color:#6c7086;font-size:.85em;margin-bottom:1.5rem}
+.status{background:#181825;border:1px solid #313244;border-radius:6px;padding:1rem;margin-bottom:1.5rem}
+.status dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem .75rem;margin:0}
+.status dt{color:#6c7086}
+.status dd{margin:0;color:#cdd6f4}
+table{width:100%;border-collapse:collapse;font-size:.85em}
+th{text-align:left;border-bottom:1px solid #313244;padding:.3rem .5rem;color:#6c7086}
+td{padding:.3rem .5rem;border-bottom:1px solid #181825;vertical-align:top;word-break:break-word}
+td:first-child,td:nth-child(2){white-space:nowrap;color:#6c7086}
+.kind-boot{color:#a6e3a1}
+.kind-claude_success{color:#89b4fa}
+.kind-claude_failure{color:#f38ba8}
+.kind-last_words{color:#fab387}
+h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
+.api{background:#181825;border:1px solid #313244;border-radius:6px;padding:.75rem 1rem;font-size:.85em;line-height:1.8}
+</style></head>
+<body>
+<h1>Kenny</h1>
+<p class="sub">Self-modifying AI agent &mdash; life #{{.LifeID}}</p>
+
+<div class="status">
+<dl>
+  <dt>Life</dt><dd>#{{.LifeID}}</dd>
+  <dt>Boot</dt><dd>{{.BootAt}}</dd>
+  <dt>Expected death</dt><dd>{{.ExpectedDeathAt}}</dd>
+  <dt>Remaining</dt><dd>{{.RemainingSeconds}}s</dd>
+  <dt>Pending messages</dt><dd>{{.PendingCount}}</dd>
+</dl>
+</div>
+
+<h2>Recent journal</h2>
+<table>
+<tr><th>Life</th><th>Time</th><th>Kind</th><th>Message</th></tr>
+{{range .Journal}}<tr>
+  <td>{{.LifeID}}</td>
+  <td>{{.At}}</td>
+  <td class="kind-{{.Kind}}">{{.Kind}}</td>
+  <td>{{.Message}}</td>
+</tr>{{end}}
+</table>
+
+<h2>API</h2>
+<div class="api">
+POST /api/message &nbsp;{"content":"..."} &mdash; queue a message for next life<br>
+GET &nbsp;/api/messages &mdash; list unconsumed messages<br>
+GET &nbsp;/api/journal[?limit=N] &mdash; journal entries (max 500)<br>
+GET &nbsp;/api/status &mdash; current life info<br>
+GET &nbsp;/healthz &mdash; readiness check<br>
+GET &nbsp;/metrics &mdash; Prometheus
+</div>
+</body></html>
+`))
+
+func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	entries, _ := s.store.RecentJournal(ctx, 20)
+	pending, _ := s.store.PendingMessages(ctx)
+
+	now := time.Now().UTC()
+	remaining := s.status.ExpectedDeathAt.Sub(now)
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	type row struct {
+		LifeID  int64
+		At      string
+		Kind    string
+		Message string
+	}
+	rows := make([]row, len(entries))
+	for i, e := range entries {
+		msg := e.Message
+		if len(msg) > 200 {
+			msg = msg[:200] + "…"
+		}
+		rows[i] = row{LifeID: e.LifeID, At: e.At.Format("01-02 15:04"), Kind: e.Kind, Message: msg}
+	}
+
+	data := struct {
+		LifeID           int64
+		BootAt           string
+		ExpectedDeathAt  string
+		RemainingSeconds int64
+		PendingCount     int
+		Journal          []row
+	}{
+		LifeID:           s.status.LifeID,
+		BootAt:           s.status.BootAt.Format(time.RFC3339),
+		ExpectedDeathAt:  s.status.ExpectedDeathAt.Format(time.RFC3339),
+		RemainingSeconds: int64(remaining.Seconds()),
+		PendingCount:     len(pending),
+		Journal:          rows,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = dashTmpl.Execute(w, data)
 }
 
 func writeHealth(w http.ResponseWriter, status int, reason string) {

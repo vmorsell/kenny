@@ -338,11 +338,16 @@ type Message struct {
 }
 
 // AddMessage queues a message from the user for Kenny to see on next boot.
-func (s *Store) AddMessage(ctx context.Context, content string) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO messages (received_at, content) VALUES (?, ?)`,
-		time.Now().UTC(), content)
-	return err
+// Returns the stored message (including its ID and received_at timestamp).
+func (s *Store) AddMessage(ctx context.Context, content string) (Message, error) {
+	at := time.Now().UTC()
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO messages (received_at, content) VALUES (?, ?)`, at, content)
+	if err != nil {
+		return Message{}, err
+	}
+	id, _ := res.LastInsertId()
+	return Message{ID: id, ReceivedAt: at, Content: content}, nil
 }
 
 // PendingMessages returns messages not yet consumed by a boot prompt.

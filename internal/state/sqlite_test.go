@@ -181,10 +181,10 @@ func TestMessagesLifecycle(t *testing.T) {
 		t.Fatalf("PendingMessages empty: got %d err=%v", len(pending), err)
 	}
 
-	if err := s.AddMessage(ctx, "hello from user"); err != nil {
+	if _, err := s.AddMessage(ctx, "hello from user"); err != nil {
 		t.Fatalf("AddMessage: %v", err)
 	}
-	if err := s.AddMessage(ctx, "second message"); err != nil {
+	if _, err := s.AddMessage(ctx, "second message"); err != nil {
 		t.Fatalf("AddMessage 2: %v", err)
 	}
 
