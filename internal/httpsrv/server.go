@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -137,9 +138,15 @@ func (s *Server) getMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getJournal(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	entries, err := s.store.RecentJournal(ctx, 50)
+	entries, err := s.store.RecentJournal(ctx, limit)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
