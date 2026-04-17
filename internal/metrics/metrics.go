@@ -129,6 +129,22 @@ func Register(reg prometheus.Registerer, clock *lifecycle.Clock, store *state.St
 		},
 	))
 
+	reg.MustRegister(prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "kenny_pending_messages",
+			Help: "User messages queued but not yet consumed by a boot prompt.",
+		},
+		func() float64 {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			n, err := store.CountPendingMessages(ctx)
+			if err != nil {
+				return 0
+			}
+			return float64(n)
+		},
+	))
+
 	bi := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kenny_build_info",

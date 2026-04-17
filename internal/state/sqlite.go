@@ -409,6 +409,14 @@ func (s *Store) PendingMessages(ctx context.Context) ([]Message, error) {
 	return out, rows.Err()
 }
 
+// CountPendingMessages returns the number of messages not yet consumed.
+func (s *Store) CountPendingMessages(ctx context.Context) (int64, error) {
+	var n int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM messages WHERE consumed_at IS NULL`).Scan(&n)
+	return n, err
+}
+
 // ConsumeMessages marks all pending messages as consumed.
 func (s *Store) ConsumeMessages(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx,
