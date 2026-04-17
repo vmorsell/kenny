@@ -202,21 +202,26 @@ func (s *Server) getJournal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
 	now := time.Now().UTC()
 	remaining := s.status.ExpectedDeathAt.Sub(now)
 	if remaining < 0 {
 		remaining = 0
 	}
+	inflightCount, _ := s.store.CountInflight(ctx)
 	body := struct {
 		LifeID           int64  `json:"life_id"`
 		BootAt           string `json:"boot_at"`
 		ExpectedDeathAt  string `json:"expected_death_at"`
 		RemainingSeconds int64  `json:"remaining_seconds"`
+		InflightCount    int64  `json:"inflight_count"`
 	}{
 		LifeID:           s.status.LifeID,
 		BootAt:           s.status.BootAt.Format(time.RFC3339),
 		ExpectedDeathAt:  s.status.ExpectedDeathAt.Format(time.RFC3339),
 		RemainingSeconds: int64(remaining.Seconds()),
+		InflightCount:    inflightCount,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(body)
@@ -258,6 +263,7 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
   <dt>Expected death</dt><dd>{{.ExpectedDeathAt}}</dd>
   <dt>Remaining</dt><dd><span id="countdown">{{.RemainingSeconds}}s</span></dd>
   <dt>Pending messages</dt><dd id="pending-count">{{.PendingCount}}</dd>
+  <dt>Status</dt><dd id="thinking-status" style="color:#a6e3a1">idle</dd>
 </dl>
 </div>
 
@@ -360,6 +366,25 @@ async function refreshJournal() {
 }
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 setInterval(refreshJournal, 30000);
+
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) return;
+    const s = await r.json();
+    const el = document.getElementById('thinking-status');
+    if (!el) return;
+    if (s.inflight_count > 0) {
+      el.textContent = 'thinking…';
+      el.style.color = '#fab387';
+    } else {
+      el.textContent = 'idle';
+      el.style.color = '#a6e3a1';
+    }
+  } catch(_) {}
+}
+pollStatus();
+setInterval(pollStatus, 5000);
 
 async function refreshLives() {
   try {
