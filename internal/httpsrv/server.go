@@ -322,7 +322,17 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 </div>
 <div id="msg-status"></div>
 
-{{if .MessageHistory}}<h2>Message history</h2>
+{{if .Responses}}<h2>Kenny&#39;s responses</h2>
+<table id="responses-table">
+<tr><th>Time</th><th>Response</th></tr>
+<tbody id="responses-body">
+{{range .Responses}}<tr>
+  <td>{{.At}}</td>
+  <td style="white-space:pre-wrap">{{.Message}}</td>
+</tr>{{end}}
+</tbody>
+</table>
+{{end}}{{if .MessageHistory}}<h2>Message history</h2>
 <table id="msg-history-table">
 <tr><th>Sent</th><th>Status</th><th>Content</th></tr>
 <tbody id="msg-history-body">
@@ -485,6 +495,25 @@ async function refreshCommits() {
 }
 setInterval(refreshCommits, 60000);
 
+async function refreshResponses() {
+  try {
+    const r = await fetch('/api/journal?kind=message_response&limit=10');
+    if (!r.ok) return;
+    const entries = await r.json();
+    const tbody = document.getElementById('responses-body');
+    if (!tbody) return;
+    if (!entries || !entries.length) { tbody.innerHTML = '<tr><td colspan="2" style="color:#6c7086">No responses yet</td></tr>'; return; }
+    const table = document.getElementById('responses-table');
+    if (table) table.style.display = '';
+    tbody.innerHTML = entries.map(e => {
+      const at = e.at.replace('T',' ').substring(5,16);
+      return '<tr><td>'+at+'</td><td style="white-space:pre-wrap">'+escHtml((e.message||'').substring(0,1000))+'</td></tr>';
+    }).join('');
+  } catch(_) {}
+}
+refreshResponses();
+setInterval(refreshResponses, 30000);
+
 async function refreshMsgHistory() {
   try {
     const r = await fetch('/api/messages/history?limit=20');
@@ -519,6 +548,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	lifeSums, _ := s.store.LifeSummaries(ctx, 20)
 	pinnedNote, _, _ := s.store.GetMetadata(ctx, noteKey)
 	allMsgs, _ := s.store.AllMessages(ctx, 10)
+	responseEntries, _ := s.store.JournalFiltered(ctx, 5, 0, "message_response")
 
 	now := time.Now().UTC()
 	remaining := s.status.ExpectedDeathAt.Sub(now)
@@ -567,6 +597,19 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	type responseRow struct {
+		At      string
+		Message string
+	}
+	rrows := make([]responseRow, len(responseEntries))
+	for i, e := range responseEntries {
+		msg := e.Message
+		if len(msg) > 1000 {
+			msg = msg[:1000] + "…"
+		}
+		rrows[i] = responseRow{At: e.At.Format("01-02 15:04"), Message: msg}
+	}
+
 	data := struct {
 		LifeID           int64
 		BootAt           string
@@ -578,6 +621,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		Lives            []lifeRow
 		PinnedNote       string
 		MessageHistory   []msgRow
+		Responses        []responseRow
 	}{
 		LifeID:           s.status.LifeID,
 		BootAt:           s.status.BootAt.Format(time.RFC3339),
@@ -589,6 +633,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		Lives:            lrows,
 		PinnedNote:       pinnedNote,
 		MessageHistory:   mrows,
+		Responses:        rrows,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
