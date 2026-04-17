@@ -103,3 +103,45 @@ func TestMetricsEndpoint(t *testing.T) {
 		t.Fatalf("body missing HELP header: %s", body)
 	}
 }
+
+func TestMessageRoundTrip(t *testing.T) {
+	_, addr := newTestServer(t)
+
+	// POST a message.
+	postResp, err := http.Post("http://"+addr+"/api/message",
+		"application/json", strings.NewReader(`{"content":"hello kenny"}`))
+	if err != nil {
+		t.Fatalf("POST /api/message: %v", err)
+	}
+	defer postResp.Body.Close()
+	if postResp.StatusCode != http.StatusAccepted {
+		t.Fatalf("POST status = %d, want 202", postResp.StatusCode)
+	}
+
+	// GET pending messages.
+	getResp, err := http.Get("http://" + addr + "/api/messages")
+	if err != nil {
+		t.Fatalf("GET /api/messages: %v", err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET status = %d, want 200", getResp.StatusCode)
+	}
+	body, _ := io.ReadAll(getResp.Body)
+	if !strings.Contains(string(body), "hello kenny") {
+		t.Fatalf("response missing message content: %s", body)
+	}
+}
+
+func TestPostMessageEmptyBody(t *testing.T) {
+	_, addr := newTestServer(t)
+	resp, err := http.Post("http://"+addr+"/api/message",
+		"application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty content: status = %d, want 400", resp.StatusCode)
+	}
+}

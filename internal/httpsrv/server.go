@@ -40,6 +40,7 @@ func New(addr string, reg *prometheus.Registry, store *state.Store) *Server {
 	mux.HandleFunc("/healthz", s.healthz)
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("POST /api/message", s.postMessage)
+	mux.HandleFunc("GET /api/messages", s.getMessages)
 
 	return s
 }
@@ -102,6 +103,26 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *Server) getMessages(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	msgs, err := s.store.PendingMessages(ctx)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	type msg struct {
+		ReceivedAt string `json:"received_at"`
+		Content    string `json:"content"`
+	}
+	out := make([]msg, len(msgs))
+	for i, m := range msgs {
+		out[i] = msg{ReceivedAt: m.ReceivedAt.Format(time.RFC3339), Content: m.Content}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 func writeHealth(w http.ResponseWriter, status int, reason string) {

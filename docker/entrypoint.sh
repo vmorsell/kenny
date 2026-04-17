@@ -20,6 +20,16 @@ if [ -d /app/.git ]; then
         gosu node git -C /app remote set-url origin \
             "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPO}.git"
     fi
+elif [ -n "${GITHUB_PAT:-}" ] && [ -n "$GITHUB_REPO" ]; then
+    # No .git present (fresh image build). Initialize from remote so Kenny can commit.
+    gosu node git -C /app init -b main
+    gosu node git -C /app config user.name "$GIT_USER_NAME"
+    gosu node git -C /app config user.email "$GIT_USER_EMAIL"
+    gosu node git -C /app config --add safe.directory /app
+    gosu node git -C /app remote add origin \
+        "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPO}.git"
+    gosu node git -C /app fetch origin main
+    gosu node git -C /app reset --hard origin/main
 fi
 
 # Drop privileges before exec'ing Kenny. Claude Code's

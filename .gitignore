@@ -9,3 +9,5 @@
 .commit-msg
 coverage.*
 /state/
+# Coolify generates this at runtime; the repo has docker-compose.yml
+docker-compose.yaml
