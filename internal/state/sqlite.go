@@ -207,6 +207,26 @@ func (s *Store) RecentJournal(ctx context.Context, limit int, lifeID ...int64) (
 	return out, rows.Err()
 }
 
+// RecentJournalByKind returns recent journal entries filtered to a specific kind.
+func (s *Store) RecentJournalByKind(ctx context.Context, kind string, limit int) ([]JournalEntry, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, life_id, at, kind, message FROM journal WHERE kind = ? ORDER BY id DESC LIMIT ?`,
+		kind, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []JournalEntry
+	for rows.Next() {
+		var e JournalEntry
+		if err := rows.Scan(&e.ID, &e.LifeID, &e.At, &e.Kind, &e.Message); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) CountJournalEntries(ctx context.Context) (int64, error) {
 	var n int64
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM journal`).Scan(&n)

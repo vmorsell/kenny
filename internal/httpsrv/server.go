@@ -184,9 +184,18 @@ func (s *Server) getJournal(w http.ResponseWriter, r *http.Request) {
 			lifeID = n
 		}
 	}
+	kind := r.URL.Query().Get("kind")
+
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	entries, err := s.store.RecentJournal(ctx, limit, lifeID)
+
+	var entries []state.JournalEntry
+	var err error
+	if kind != "" && lifeID == 0 {
+		entries, err = s.store.RecentJournalByKind(ctx, kind, limit)
+	} else {
+		entries, err = s.store.RecentJournal(ctx, limit, lifeID)
+	}
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
