@@ -35,7 +35,7 @@ func newTestServer(t *testing.T) (*Server, string) {
 	// Register a dummy collector so /metrics has content.
 	reg.MustRegister(prometheus.NewCounter(prometheus.CounterOpts{Name: "x", Help: "x"}))
 
-	s := New(addr, reg, store)
+	s := New(addr, reg, store, StatusInfo{LifeID: 1})
 	s.Start()
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

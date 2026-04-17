@@ -18,15 +18,23 @@ import (
 	"github.com/vmorsell/kenny/internal/state"
 )
 
+// StatusInfo is set once at boot and exposed via GET /api/status.
+type StatusInfo struct {
+	LifeID          int64
+	BootAt          time.Time
+	ExpectedDeathAt time.Time
+}
+
 type Server struct {
-	srv   *http.Server
-	store *state.Store
-	ready atomic.Bool
+	srv    *http.Server
+	store  *state.Store
+	status StatusInfo
+	ready  atomic.Bool
 }
 
 // New wires up /healthz and /metrics. The server is created in a
 // not-ready state; call MarkReady once boot is complete.
-func New(addr string, reg *prometheus.Registry, store *state.Store) *Server {
+func New(addr string, reg *prometheus.Registry, store *state.Store, status StatusInfo) *Server {
 	mux := http.NewServeMux()
 	s := &Server{
 		srv: &http.Server{
@@ -34,7 +42,8 @@ func New(addr string, reg *prometheus.Registry, store *state.Store) *Server {
 			Handler:           mux,
 			ReadHeaderTimeout: 5 * time.Second,
 		},
-		store: store,
+		store:  store,
+		status: status,
 	}
 
 	mux.HandleFunc("/healthz", s.healthz)
@@ -42,6 +51,7 @@ func New(addr string, reg *prometheus.Registry, store *state.Store) *Server {
 	mux.HandleFunc("POST /api/message", s.postMessage)
 	mux.HandleFunc("GET /api/messages", s.getMessages)
 	mux.HandleFunc("GET /api/journal", s.getJournal)
+	mux.HandleFunc("GET /api/status", s.getStatus)
 
 	return s
 }
@@ -146,6 +156,27 @@ func (s *Server) getJournal(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC()
+	remaining := s.status.ExpectedDeathAt.Sub(now)
+	if remaining < 0 {
+		remaining = 0
+	}
+	body := struct {
+		LifeID           int64  `json:"life_id"`
+		BootAt           string `json:"boot_at"`
+		ExpectedDeathAt  string `json:"expected_death_at"`
+		RemainingSeconds int64  `json:"remaining_seconds"`
+	}{
+		LifeID:           s.status.LifeID,
+		BootAt:           s.status.BootAt.Format(time.RFC3339),
+		ExpectedDeathAt:  s.status.ExpectedDeathAt.Format(time.RFC3339),
+		RemainingSeconds: int64(remaining.Seconds()),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 func writeHealth(w http.ResponseWriter, status int, reason string) {

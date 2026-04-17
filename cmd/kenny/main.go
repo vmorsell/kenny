@@ -64,7 +64,11 @@ func main() {
 	reg := prometheus.NewRegistry()
 	m := metrics.Register(reg, clock, store, metrics.BuildInfo{SHA: buildSHA, BuiltAt: buildTime})
 
-	srv := httpsrv.New(httpAddr, reg, store)
+	srv := httpsrv.New(httpAddr, reg, store, httpsrv.StatusInfo{
+		LifeID:          lifeID,
+		BootAt:          clock.BootAt(),
+		ExpectedDeathAt: clock.ExpectedDeathAt(),
+	})
 	srv.Start()
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
