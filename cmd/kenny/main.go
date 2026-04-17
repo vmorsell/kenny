@@ -164,9 +164,20 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 	if err != nil {
 		return "", err
 	}
-	recent, err := store.RecentJournal(ctx, 8)
+	// Fetch more than needed so filtering still leaves us with enough signal.
+	rawRecent, err := store.RecentJournal(ctx, 30)
 	if err != nil {
 		return "", err
+	}
+	var recent []state.JournalEntry
+	for _, e := range rawRecent {
+		if e.Kind == "boot" || e.Kind == "last_words" {
+			continue
+		}
+		recent = append(recent, e)
+		if len(recent) == 8 {
+			break
+		}
 	}
 	inflight, err := store.ListInflight(ctx)
 	if err != nil {
