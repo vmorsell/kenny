@@ -322,7 +322,18 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 </div>
 <div id="msg-status"></div>
 
-<h2>Lives</h2>
+{{if .MessageHistory}}<h2>Message history</h2>
+<table id="msg-history-table">
+<tr><th>Sent</th><th>Status</th><th>Content</th></tr>
+<tbody id="msg-history-body">
+{{range .MessageHistory}}<tr>
+  <td>{{.ReceivedAt}}</td>
+  <td style="color:{{if .Consumed}}#6c7086{{else}}#a6e3a1{{end}}">{{if .Consumed}}consumed{{else}}pending{{end}}</td>
+  <td>{{.Content}}</td>
+</tr>{{end}}
+</tbody>
+</table>
+{{end}}<h2>Lives</h2>
 <table id="lives-table">
 <tr><th>Life</th><th>Time</th><th>Outcome</th><th>Summary</th></tr>
 <tbody id="lives-body">
@@ -473,6 +484,24 @@ async function refreshCommits() {
   } catch(_) {}
 }
 setInterval(refreshCommits, 60000);
+
+async function refreshMsgHistory() {
+  try {
+    const r = await fetch('/api/messages/history?limit=20');
+    if (!r.ok) return;
+    const msgs = await r.json();
+    const tbody = document.getElementById('msg-history-body');
+    if (!tbody || !msgs) return;
+    if (!msgs.length) { tbody.innerHTML = '<tr><td colspan="3" style="color:#6c7086">No messages yet</td></tr>'; return; }
+    tbody.innerHTML = msgs.map(m => {
+      const at = m.received_at.replace('T',' ').substring(5,16);
+      const status = m.consumed ? '<span style="color:#6c7086">consumed</span>' : '<span style="color:#a6e3a1">pending</span>';
+      return '<tr><td>'+at+'</td><td>'+status+'</td><td>'+escHtml(m.content)+'</td></tr>';
+    }).join('');
+  } catch(_) {}
+}
+refreshMsgHistory();
+setInterval(refreshMsgHistory, 30000);
 </script>
 </body></html>
 `))
@@ -489,6 +518,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	pending, _ := s.store.PendingMessages(ctx)
 	lifeSums, _ := s.store.LifeSummaries(ctx, 20)
 	pinnedNote, _, _ := s.store.GetMetadata(ctx, noteKey)
+	allMsgs, _ := s.store.AllMessages(ctx, 10)
 
 	now := time.Now().UTC()
 	remaining := s.status.ExpectedDeathAt.Sub(now)
@@ -523,6 +553,20 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		lrows[i] = lifeRow{LifeID: e.LifeID, At: e.At.Format("01-02 15:04"), Kind: e.Kind, Summary: sum}
 	}
 
+	type msgRow struct {
+		ReceivedAt string
+		Content    string
+		Consumed   bool
+	}
+	mrows := make([]msgRow, len(allMsgs))
+	for i, m := range allMsgs {
+		mrows[i] = msgRow{
+			ReceivedAt: m.ReceivedAt.Format("01-02 15:04"),
+			Content:    firstLine(m.Content, 200),
+			Consumed:   m.ConsumedAt != nil,
+		}
+	}
+
 	data := struct {
 		LifeID           int64
 		BootAt           string
@@ -533,6 +577,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		Journal          []row
 		Lives            []lifeRow
 		PinnedNote       string
+		MessageHistory   []msgRow
 	}{
 		LifeID:           s.status.LifeID,
 		BootAt:           s.status.BootAt.Format(time.RFC3339),
@@ -543,6 +588,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		Journal:          rows,
 		Lives:            lrows,
 		PinnedNote:       pinnedNote,
+		MessageHistory:   mrows,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
