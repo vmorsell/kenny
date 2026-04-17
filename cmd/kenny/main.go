@@ -181,6 +181,11 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 
 	sb.WriteString("Read CLAUDE.md for your purpose, method, and the full shape of your situation.\n\n")
 
+	if remaining := clock.RemainingLifespan(); remaining < 10*time.Minute {
+		fmt.Fprintf(&sb, "⚠️  WARNING: only %s remaining. Commit any in-progress work now before exploring further.\n\n",
+			remaining.Round(time.Second))
+	}
+
 	if gitLog := recentGitLog(repoDir, 5); gitLog != "" {
 		sb.WriteString("Recent commits (git log --oneline):\n")
 		sb.WriteString(gitLog)
