@@ -196,6 +196,11 @@ func TestMessagesLifecycle(t *testing.T) {
 		t.Fatalf("unexpected content: %+v", pending)
 	}
 
+	n, err := s.CountPendingMessages(ctx)
+	if err != nil || n != 2 {
+		t.Fatalf("CountPendingMessages = %d err=%v, want 2", n, err)
+	}
+
 	if err := s.ConsumeMessages(ctx); err != nil {
 		t.Fatalf("ConsumeMessages: %v", err)
 	}
@@ -203,5 +208,10 @@ func TestMessagesLifecycle(t *testing.T) {
 	pending, err = s.PendingMessages(ctx)
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("PendingMessages after consume: got %d err=%v, want 0", len(pending), err)
+	}
+
+	n, err = s.CountPendingMessages(ctx)
+	if err != nil || n != 0 {
+		t.Fatalf("CountPendingMessages after consume = %d err=%v, want 0", n, err)
 	}
 }
