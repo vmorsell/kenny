@@ -63,6 +63,9 @@ func New(addr string, reg *prometheus.Registry, store *state.Store, status Statu
 	mux.HandleFunc("GET /api/commits", cors(s.getCommits))
 	mux.HandleFunc("GET /api/lives", cors(s.getLives))
 	mux.HandleFunc("GET /api/inflight", cors(s.getInflight))
+	mux.HandleFunc("GET /api/note", cors(s.getNote))
+	mux.HandleFunc("POST /api/note", cors(s.postNote))
+	mux.HandleFunc("DELETE /api/note", cors(s.deleteNote))
 	mux.HandleFunc("OPTIONS /api/", cors(func(w http.ResponseWriter, r *http.Request) {}))
 
 	return s
@@ -268,7 +271,9 @@ h2{color:#89b4fa;margin-top:1.5rem;margin-bottom:.5rem;font-size:1em}
 </dl>
 </div>
 
-<h2>Send a message to next life</h2>
+{{if .PinnedNote}}<h2>Pinned note</h2>
+<div class="api" style="white-space:pre-wrap" id="pinned-note">{{.PinnedNote}}</div>
+{{end}}<h2>Send a message to next life</h2>
 <div class="msg-form">
   <textarea id="msg-input" placeholder="What should Kenny work on?"></textarea>
   <button onclick="sendMessage()">Send</button>
@@ -312,6 +317,9 @@ GET &nbsp;/api/status &mdash; current life info (JSON)<br>
 GET &nbsp;/api/commits[?n=N] &mdash; recent git commits as JSON (max 100)<br>
 GET &nbsp;/api/lives[?n=N] &mdash; per-life outcome summaries as JSON (max 100)<br>
 GET &nbsp;/api/inflight &mdash; open inflight tasks as JSON<br>
+GET &nbsp;/api/note &mdash; pinned note (persistent across lives)<br>
+POST /api/note &nbsp;{"content":"..."} &mdash; set pinned note<br>
+DELETE /api/note &mdash; clear pinned note<br>
 GET &nbsp;/healthz &mdash; readiness + SQLite check<br>
 GET &nbsp;/metrics &mdash; Prometheus
 </div>
@@ -436,6 +444,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	entries, _ := s.store.RecentJournal(ctx, 20)
 	pending, _ := s.store.PendingMessages(ctx)
 	lifeSums, _ := s.store.LifeSummaries(ctx, 20)
+	pinnedNote, _, _ := s.store.GetMetadata(ctx, noteKey)
 
 	now := time.Now().UTC()
 	remaining := s.status.ExpectedDeathAt.Sub(now)
@@ -479,6 +488,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		RecentCommits    string
 		Journal          []row
 		Lives            []lifeRow
+		PinnedNote       string
 	}{
 		LifeID:           s.status.LifeID,
 		BootAt:           s.status.BootAt.Format(time.RFC3339),
@@ -488,6 +498,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		RecentCommits:    s.status.RecentCommits,
 		Journal:          rows,
 		Lives:            lrows,
+		PinnedNote:       pinnedNote,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -556,6 +567,49 @@ func (s *Server) getCommits(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(commits)
+}
+
+const noteKey = "pinned_note"
+
+func (s *Server) getNote(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	v, ok, err := s.store.GetMetadata(ctx, noteKey)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"content": v, "set": ok})
+}
+
+func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := s.store.SetMetadata(ctx, noteKey, body.Content); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"content": body.Content})
+}
+
+func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	// Clear by setting to empty string (metadata table has no delete in the API layer).
+	if err := s.store.SetMetadata(ctx, noteKey, ""); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // firstLine returns the first non-empty line of s, capped at maxLen chars.

@@ -44,6 +44,20 @@ The harness serves these endpoints. Keep them in sync with `internal/httpsrv/ser
 - `GET /api/commits[?n=N]` — recent git commits as JSON (sha, subject, author, date; max 100)
 - `GET /api/lives[?n=N]` — per-life outcome summaries as JSON (life_id, at, kind, summary; max 100)
 - `GET /api/inflight` — open inflight tasks as JSON (id, life_id, started_at, kind, payload)
+- `GET /api/note` — pinned note (content, set); persists across all lives until cleared
+- `POST /api/note` body `{"content":"..."}` — set the pinned note
+- `DELETE /api/note` — clear the pinned note
+
+## Pinned note (cross-life persistence)
+
+The pinned note is a single free-text field stored in SQLite that appears in **every** boot prompt until cleared. Use it to leave yourself a clear priority or work-in-progress note that won't get buried as the journal grows.
+
+- Set it via `POST /api/note {"content":"..."}` or by calling `store.SetMetadata(ctx, "pinned_note", "...")` in Go
+- Clear it via `DELETE /api/note` when the goal is done
+- It appears in the boot prompt under "Pinned note (persists across all lives until cleared):"
+- The dashboard also shows it prominently when set
+
+Use it for: multi-life goals, in-progress work status, user-requested tasks that span lives.
 
 ## Inbound channel
 

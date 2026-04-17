@@ -127,8 +127,11 @@ func main() {
 
 	switch {
 	case runErr != nil:
-		_ = store.AppendJournal(journalCtx, lifeID, "claude_failure",
-			"claude -p: "+runErr.Error())
+		msg := "claude -p: " + runErr.Error()
+		if res != nil && res.FinalText != "" {
+			msg += "\n\nPartial output:\n" + truncate(res.FinalText, 500)
+		}
+		_ = store.AppendJournal(journalCtx, lifeID, "claude_failure", msg)
 	case res != nil && res.FinalText != "":
 		_ = store.AppendJournal(journalCtx, lifeID, "claude_success",
 			truncate(res.FinalText, 2000))
@@ -188,6 +191,8 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 		return "", err
 	}
 
+	pinnedNote, _, _ := store.GetMetadata(ctx, "pinned_note")
+
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "You are Kenny, life #%d.\n", lifeID)
 	fmt.Fprintf(&sb, "Current time (UTC): %s\n", time.Now().UTC().Format(time.RFC3339))
@@ -196,6 +201,10 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 	fmt.Fprintf(&sb, "Repo root: %s\n\n", repoDir)
 
 	sb.WriteString("Read CLAUDE.md for your purpose, method, and the full shape of your situation.\n\n")
+
+	if pinnedNote != "" {
+		fmt.Fprintf(&sb, "Pinned note (persists across all lives until cleared):\n%s\n\n", pinnedNote)
+	}
 
 	if remaining := clock.RemainingLifespan(); remaining < 10*time.Minute {
 		fmt.Fprintf(&sb, "⚠️  WARNING: only %s remaining. Commit any in-progress work now before exploring further.\n\n",
