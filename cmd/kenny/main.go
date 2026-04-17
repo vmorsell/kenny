@@ -105,14 +105,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	sessionID, _, _ := store.GetSession(ctx, "main")
+
+	// Route claude's HOME to the persistent state dir so session files
+	// survive container restarts. Without this, ~/.claude/ is on the
+	// ephemeral container FS and --resume never finds prior sessions.
+	runEnv := overrideEnv(os.Environ(), "HOME", stateDir)
+
 	runner := claude.New(logger, m, claude.Options{
 		Binary:    claudeBin,
 		Cwd:       repoDir,
-		Env:       os.Environ(),
+		Env:       runEnv,
 		WaitDelay: 45 * time.Second,
 	})
-
-	sessionID, _, _ := store.GetSession(ctx, "main")
 
 	inflightID, _ := store.MarkInflight(ctx, lifeID, "claude_run", "initial run")
 	res, runErr := runner.Run(ctx, prompt, sessionID)
@@ -164,6 +169,18 @@ func envDefault(key, def string) string {
 	return def
 }
 
+// overrideEnv returns a copy of env with key=value added or replaced.
+func overrideEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	for _, e := range env {
+		if !strings.HasPrefix(e, prefix) {
+			out = append(out, e)
+		}
+	}
+	return append(out, prefix+value)
+}
+
 func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.Clock, lifeID int64, repoDir string) (string, error) {
 	// Clean up open tasks left by crashed previous lives before reading.
 	_ = store.CloseStaleInflights(ctx, lifeID)
@@ -197,13 +214,20 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 	}
 
 	pinnedNote, _, _ := store.GetMetadata(ctx, "pinned_note")
+	resumeSessionID, hasSession, _ := store.GetSession(ctx, "main")
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "You are Kenny, life #%d.\n", lifeID)
 	fmt.Fprintf(&sb, "Current time (UTC): %s\n", time.Now().UTC().Format(time.RFC3339))
 	fmt.Fprintf(&sb, "You will be killed at: %s\n", clock.ExpectedDeathAt().Format(time.RFC3339))
 	fmt.Fprintf(&sb, "Remaining lifespan: %s\n", clock.RemainingLifespan().Round(time.Second))
-	fmt.Fprintf(&sb, "Repo root: %s\n\n", repoDir)
+	fmt.Fprintf(&sb, "Repo root: %s\n", repoDir)
+	if hasSession && resumeSessionID != "" {
+		fmt.Fprintf(&sb, "Resuming Claude session: %s\n", resumeSessionID)
+	} else {
+		sb.WriteString("No prior Claude session (starting fresh).\n")
+	}
+	sb.WriteString("\n")
 
 	sb.WriteString("Read CLAUDE.md for your purpose, method, and the full shape of your situation.\n\n")
 

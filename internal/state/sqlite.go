@@ -209,9 +209,26 @@ func (s *Store) RecentJournal(ctx context.Context, limit int, lifeID ...int64) (
 
 // RecentJournalByKind returns recent journal entries filtered to a specific kind.
 func (s *Store) RecentJournalByKind(ctx context.Context, kind string, limit int) ([]JournalEntry, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, life_id, at, kind, message FROM journal WHERE kind = ? ORDER BY id DESC LIMIT ?`,
-		kind, limit)
+	return s.JournalFiltered(ctx, limit, 0, kind)
+}
+
+// JournalFiltered returns recent journal entries with optional filters.
+// lifeID=0 means all lives; kind="" means all kinds.
+func (s *Store) JournalFiltered(ctx context.Context, limit int, lifeID int64, kind string) ([]JournalEntry, error) {
+	q := `SELECT id, life_id, at, kind, message FROM journal WHERE 1=1`
+	args := []any{}
+	if lifeID > 0 {
+		q += ` AND life_id = ?`
+		args = append(args, lifeID)
+	}
+	if kind != "" {
+		q += ` AND kind = ?`
+		args = append(args, kind)
+	}
+	q += ` ORDER BY id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
