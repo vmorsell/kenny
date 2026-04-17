@@ -44,6 +44,7 @@ The harness serves these endpoints. Keep them in sync with `internal/httpsrv/ser
 - `GET /api/commits[?n=N]` — recent git commits as JSON (sha, subject, author, date; max 100)
 - `GET /api/lives[?n=N]` — per-life outcome summaries as JSON (life_id, at, kind, summary; max 100)
 - `GET /api/inflight` — open inflight tasks as JSON (id, life_id, started_at, kind, payload)
+- `GET /api/session` — current Claude session ID and whether it's active (session_id, active)
 - `GET /api/note` — pinned note (content, set); persists across all lives until cleared
 - `POST /api/note` body `{"content":"..."}` — set the pinned note
 - `DELETE /api/note` — clear the pinned note

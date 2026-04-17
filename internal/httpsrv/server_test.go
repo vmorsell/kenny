@@ -249,6 +249,67 @@ func TestGetInflight(t *testing.T) {
 	}
 }
 
+func TestJournalKindFilter(t *testing.T) {
+	ctx := context.Background()
+
+	store, err := state.Open(ctx, filepath.Join(t.TempDir(), "filter.db"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	defer store.Close()
+	_ = store.AppendJournal(ctx, 1, "claude_success", "done")
+	_ = store.AppendJournal(ctx, 1, "message_response", "hi user")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	reg := prometheus.NewRegistry()
+	s := New(addr, reg, store, StatusInfo{LifeID: 1})
+	s.Start()
+	t.Cleanup(func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.Shutdown(shutCtx)
+	})
+	waitReachable(t, addr)
+
+	resp, err := http.Get("http://" + addr + "/api/journal?kind=message_response")
+	if err != nil {
+		t.Fatalf("GET /api/journal?kind=message_response: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "message_response") {
+		t.Fatalf("body missing message_response: %s", body)
+	}
+	if strings.Contains(string(body), "claude_success") {
+		t.Fatalf("body should not contain claude_success: %s", body)
+	}
+}
+
+func TestGetSession(t *testing.T) {
+	_, addr := newTestServer(t)
+	resp, err := http.Get("http://" + addr + "/api/session")
+	if err != nil {
+		t.Fatalf("GET /api/session: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "session_id") {
+		t.Fatalf("response missing session_id: %s", body)
+	}
+	if !strings.Contains(string(body), `"active":false`) {
+		t.Fatalf("expected active:false for empty store: %s", body)
+	}
+}
+
 func TestGetLivesWithData(t *testing.T) {
 	ctx := context.Background()
 

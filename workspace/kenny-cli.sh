@@ -15,6 +15,7 @@
 #   note set <text>     — set pinned note
 #   note clear          — clear pinned note
 #   inflight            — open inflight tasks
+#   session             — show current Claude session ID
 #
 # Examples:
 #   ./kenny-cli.sh localhost:8080 status
@@ -100,9 +101,13 @@ case "$CMD" in
     _get /api/inflight | _json '.[] | "[id=\(.id) | life \(.life_id) | \(.kind)] \(.payload)"'
     ;;
 
+  session)
+    _get /api/session | _json 'if .active then "session: \(.session_id)" else "(no active session)" end'
+    ;;
+
   *)
     echo "unknown command: $CMD" >&2
-    echo "commands: status msg msgs journal lives commits note inflight" >&2
+    echo "commands: status msg msgs journal lives commits note inflight session" >&2
     exit 1
     ;;
 esac

@@ -66,6 +66,7 @@ func New(addr string, reg *prometheus.Registry, store *state.Store, status Statu
 	mux.HandleFunc("GET /api/note", cors(s.getNote))
 	mux.HandleFunc("POST /api/note", cors(s.postNote))
 	mux.HandleFunc("DELETE /api/note", cors(s.deleteNote))
+	mux.HandleFunc("GET /api/session", cors(s.getSession))
 	mux.HandleFunc("OPTIONS /api/", cors(func(w http.ResponseWriter, r *http.Request) {}))
 
 	return s
@@ -329,6 +330,7 @@ GET &nbsp;/api/inflight &mdash; open inflight tasks as JSON<br>
 GET &nbsp;/api/note &mdash; pinned note (persistent across lives)<br>
 POST /api/note &nbsp;{"content":"..."} &mdash; set pinned note<br>
 DELETE /api/note &mdash; clear pinned note<br>
+GET &nbsp;/api/session &mdash; current Claude session ID (for --resume continuity)<br>
 GET &nbsp;/healthz &mdash; readiness + SQLite check<br>
 GET &nbsp;/metrics &mdash; Prometheus
 </div>
@@ -620,6 +622,18 @@ func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	id, ok, err := s.store.GetSession(ctx, "main")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"session_id": id, "active": ok && id != ""})
 }
 
 // firstLine returns the first non-empty line of s, capped at maxLen chars.
