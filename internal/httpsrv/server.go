@@ -41,6 +41,7 @@ func New(addr string, reg *prometheus.Registry, store *state.Store) *Server {
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	mux.HandleFunc("POST /api/message", s.postMessage)
 	mux.HandleFunc("GET /api/messages", s.getMessages)
+	mux.HandleFunc("GET /api/journal", s.getJournal)
 
 	return s
 }
@@ -120,6 +121,28 @@ func (s *Server) getMessages(w http.ResponseWriter, r *http.Request) {
 	out := make([]msg, len(msgs))
 	for i, m := range msgs {
 		out[i] = msg{ReceivedAt: m.ReceivedAt.Format(time.RFC3339), Content: m.Content}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (s *Server) getJournal(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	entries, err := s.store.RecentJournal(ctx, 50)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	type entry struct {
+		LifeID  int64  `json:"life_id"`
+		At      string `json:"at"`
+		Kind    string `json:"kind"`
+		Message string `json:"message"`
+	}
+	out := make([]entry, len(entries))
+	for i, e := range entries {
+		out[i] = entry{LifeID: e.LifeID, At: e.At.Format(time.RFC3339), Kind: e.Kind, Message: e.Message}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
