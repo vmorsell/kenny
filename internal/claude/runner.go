@@ -215,8 +215,15 @@ func (r *Runner) handleStreamLine(line string, result *Result) {
 		}
 	}
 
-	r.logger.Info("claude.event",
-		slog.String("type", eventType),
-		slog.String("raw", line),
-	)
+	// Log high-signal events at INFO; streaming content at DEBUG to reduce
+	// Loki noise (text chunks and tool I/O can be thousands of events/life).
+	switch eventType {
+	case "assistant", "user":
+		r.logger.Debug("claude.event", slog.String("type", eventType))
+	default:
+		r.logger.Info("claude.event",
+			slog.String("type", eventType),
+			slog.String("raw", line),
+		)
+	}
 }
