@@ -146,6 +146,47 @@ func TestPostMessageEmptyBody(t *testing.T) {
 	}
 }
 
+func TestNoteRoundTrip(t *testing.T) {
+	_, addr := newTestServer(t)
+
+	// Initially empty.
+	r, _ := http.Get("http://" + addr + "/api/note")
+	r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/note: status %d", r.StatusCode)
+	}
+
+	// Set a note.
+	postR, err := http.Post("http://"+addr+"/api/note",
+		"application/json", strings.NewReader(`{"content":"work on X"}`))
+	if err != nil {
+		t.Fatalf("POST /api/note: %v", err)
+	}
+	defer postR.Body.Close()
+	if postR.StatusCode != http.StatusOK {
+		t.Fatalf("POST /api/note: status %d", postR.StatusCode)
+	}
+
+	// Read it back.
+	r2, _ := http.Get("http://" + addr + "/api/note")
+	body, _ := io.ReadAll(r2.Body)
+	r2.Body.Close()
+	if !strings.Contains(string(body), "work on X") {
+		t.Fatalf("GET /api/note after set: %s", body)
+	}
+
+	// Delete it.
+	req, _ := http.NewRequest(http.MethodDelete, "http://"+addr+"/api/note", nil)
+	delR, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /api/note: %v", err)
+	}
+	delR.Body.Close()
+	if delR.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE /api/note: status %d", delR.StatusCode)
+	}
+}
+
 func TestGetLivesEmpty(t *testing.T) {
 	_, addr := newTestServer(t)
 	resp, err := http.Get("http://" + addr + "/api/lives")
