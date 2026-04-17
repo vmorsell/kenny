@@ -249,6 +249,15 @@ func (s *Store) CountInflight(ctx context.Context) (int64, error) {
 	return n, err
 }
 
+// CloseStaleInflights marks all open inflight tasks from prior lives as done.
+// Called on boot so that tasks left open by a crashed life don't linger.
+func (s *Store) CloseStaleInflights(ctx context.Context, currentLifeID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE inflight SET status = 'done' WHERE status = 'open' AND life_id != ?`,
+		currentLifeID)
+	return err
+}
+
 // ------------------- Sessions -------------------
 
 func (s *Store) PutSession(ctx context.Context, purpose, sessionID string) error {

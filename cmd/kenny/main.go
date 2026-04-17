@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -148,6 +149,9 @@ func envDefault(key, def string) string {
 }
 
 func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.Clock, lifeID int64, repoDir string) (string, error) {
+	// Clean up open tasks left by crashed previous lives before reading.
+	_ = store.CloseStaleInflights(ctx, lifeID)
+
 	recent, err := store.RecentJournal(ctx, 20)
 	if err != nil {
 		return "", err
@@ -169,6 +173,12 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 	fmt.Fprintf(&sb, "Repo root: %s\n\n", repoDir)
 
 	sb.WriteString("Read CLAUDE.md for your purpose, method, and the full shape of your situation.\n\n")
+
+	if gitLog := recentGitLog(repoDir, 5); gitLog != "" {
+		sb.WriteString("Recent commits (git log --oneline):\n")
+		sb.WriteString(gitLog)
+		sb.WriteString("\n")
+	}
 
 	if len(msgs) > 0 {
 		sb.WriteString("Messages from your user (queued since last life):\n")
@@ -201,6 +211,15 @@ func buildBootPrompt(ctx context.Context, store *state.Store, clock *lifecycle.C
 
 	sb.WriteString("Work on what matters. Commit before you die.\n")
 	return sb.String(), nil
+}
+
+func recentGitLog(repoDir string, n int) string {
+	out, err := exec.Command("git", "-C", repoDir, "log", "--oneline",
+		fmt.Sprintf("-%d", n)).Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }
 
 func truncate(s string, max int) string {
