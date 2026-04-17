@@ -136,11 +136,14 @@ func main() {
 
 		writeCtx, writeCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if runErr != nil {
-			msg := fmt.Sprintf("run #%d: claude -p: %s", runNum, runErr.Error())
-			if res != nil && res.FinalText != "" {
-				msg += "\n\nPartial output:\n" + truncate(res.FinalText, 500)
+			// Don't log failure for SIGTERM-induced cancellation — that's expected.
+			if ctx.Err() == nil {
+				msg := fmt.Sprintf("run #%d: claude -p: %s", runNum, runErr.Error())
+				if res != nil && res.FinalText != "" {
+					msg += "\n\nPartial output:\n" + truncate(res.FinalText, 500)
+				}
+				_ = store.AppendJournal(writeCtx, lifeID, "claude_failure", msg)
 			}
-			_ = store.AppendJournal(writeCtx, lifeID, "claude_failure", msg)
 			writeCancel()
 			break
 		}
@@ -152,15 +155,26 @@ func main() {
 		writeCancel()
 
 		// Build a lean continuation prompt for the next run. The resumed
-		// session already carries full conversation context.
-		prompt = fmt.Sprintf(
-			"You are Kenny, life #%d, continuation run #%d.\n"+
-				"Remaining lifespan: %s\n"+
-				"Repo root: %s\n\n"+
-				"You have already completed work this life.\n"+
-				"If there is more useful work to do before SIGTERM, do it and commit.\n"+
-				"If you are satisfied with this life's output, say so briefly and stop.\n",
-			lifeID, runNum+1, clock.RemainingLifespan().Round(time.Second), repoDir)
+		// session carries full conversation context, so this just orients.
+		var cont strings.Builder
+		fmt.Fprintf(&cont, "You are Kenny, life #%d, continuation run #%d.\n", lifeID, runNum+1)
+		fmt.Fprintf(&cont, "Remaining lifespan: %s\n", clock.RemainingLifespan().Round(time.Second))
+		fmt.Fprintf(&cont, "Repo root: %s\n\n", repoDir)
+		fmt.Fprintf(&cont, "You have already completed work this life.\n")
+
+		// Include any new messages that arrived while claude was running.
+		if newMsgs, _ := store.PendingMessages(ctx); len(newMsgs) > 0 {
+			cont.WriteString("\nNew messages from user (received during this run):\n")
+			for _, m := range newMsgs {
+				fmt.Fprintf(&cont, "- [%s] %s\n", m.ReceivedAt.Format(time.RFC3339), truncate(m.Content, 500))
+			}
+			_ = store.ConsumeMessages(ctx)
+			cont.WriteString("\n")
+		}
+
+		cont.WriteString("If there is more useful work to do before SIGTERM, do it and commit.\n")
+		cont.WriteString("If you are satisfied with this life's output, say so briefly and stop.\n")
+		prompt = cont.String()
 	}
 
 	// Wait for SIGTERM or for natural context cancellation.
